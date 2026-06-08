@@ -42,6 +42,10 @@ interface RepositoryDao {
     @Delete
     suspend fun delete(repository: RepositoryEntity)
 
+    /** 根据 URI 字符串查找仓库 */
+    @Query("SELECT * FROM image_repositories WHERE uri_string = :uriString LIMIT 1")
+    suspend fun getRepositoryByUriString(uriString: String): RepositoryEntity?
+
     /** 获取仓库总数 */
     @Query("SELECT COUNT(*) FROM image_repositories")
     suspend fun getRepositoryCount(): Int

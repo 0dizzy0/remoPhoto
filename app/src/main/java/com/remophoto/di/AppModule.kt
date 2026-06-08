@@ -9,9 +9,15 @@ import com.remophoto.data.local.dao.ImageDao
 import com.remophoto.data.local.dao.RepositoryDao
 import com.remophoto.data.repository.AlbumRepository
 import com.remophoto.data.repository.ImageRepository
+import com.remophoto.data.repository.RepositoryManager
 import com.remophoto.data.repository.SettingsRepository
 import com.remophoto.data.scanner.FileScanner
+import com.remophoto.domain.usecase.AlbumCoverManager
+import com.remophoto.domain.usecase.CreateAlbumsUseCase
+import com.remophoto.domain.usecase.ScanImagesUseCase
+import com.remophoto.domain.usecase.SortImagesUseCase
 import com.remophoto.util.ImageLoaderFactory
+import com.remophoto.util.PermissionHelper
 import coil.ImageLoader
 
 /**
@@ -48,8 +54,36 @@ class DependencyContainer(private val app: RemoPhotoApp) {
     val imageLoader: ImageLoader by lazy { ImageLoaderFactory.create(app) }
     val fileScanner: FileScanner by lazy { FileScanner(app) }
 
+    // ===== UseCase =====
+
+    val scanImagesUseCase: ScanImagesUseCase by lazy {
+        ScanImagesUseCase(fileScanner, imageDao, albumDao, repositoryDao, albumCoverManager)
+    }
+    val createAlbumsUseCase: CreateAlbumsUseCase by lazy {
+        CreateAlbumsUseCase(albumDao, imageDao)
+    }
+    val albumCoverManager: AlbumCoverManager by lazy {
+        AlbumCoverManager(albumDao, imageDao)
+    }
+    val sortImagesUseCase: SortImagesUseCase by lazy { SortImagesUseCase() }
+
     // PermissionHelper 需要 Activity 实例，不在此处创建
     // 由各 Activity 自行创建和管理
+
+    /**
+     * 工厂方法：创建 RepositoryManager
+     *
+     * RepositoryManager 依赖 PermissionHelper（需绑定 Activity），
+     * 因此通过此工厂方法延迟创建。
+     */
+    fun createRepositoryManager(permissionHelper: PermissionHelper): RepositoryManager {
+        return RepositoryManager.create(
+            repositoryDao = repositoryDao,
+            imageDao = imageDao,
+            albumDao = albumDao,
+            permissionHelper = permissionHelper
+        )
+    }
 }
 
 /**

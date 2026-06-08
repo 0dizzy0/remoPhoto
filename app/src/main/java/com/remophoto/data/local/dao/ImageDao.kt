@@ -35,7 +35,7 @@ interface ImageDao {
     suspend fun getImageCountByAlbum(albumId: Long): Int
 
     /** 查询相册中第一张图片（按文件名升序），用于自动封面 */
-    @Query("SELECT * FROM images WHERE album_id = :albumId ORDER BY file_name ASC LIMIT 1")
+    @Query("SELECT * FROM images WHERE album_id = :albumId ORDER BY file_name COLLATE NOCASE ASC LIMIT 1")
     suspend fun getFirstImageByAlbum(albumId: Long): ImageEntity?
 
     /** 根据文件路径查询图片 */

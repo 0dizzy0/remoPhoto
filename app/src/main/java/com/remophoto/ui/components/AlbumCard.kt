@@ -10,14 +10,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.remophoto.domain.model.Album
 
 /**
- * 相册卡片组件（占位 — Phase 1 完善）
+ * 相册卡片组件
  *
  * 支持两种布局模式：
- * - compact=true：双列网格模式（仅显示缩略图和名称）
- * - compact=false：单列列表模式（缩略图 + 名称 + 图片数量）
+ * - compact=true：双列网格模式（缩略图 + 名称）
+ * - compact=false：单列列表模式（缩略图 + 名称 + 图片数量 + 子相册深度缩进）
  */
 @Composable
 fun AlbumCard(
@@ -25,11 +26,13 @@ fun AlbumCard(
     compact: Boolean = true,
     onClick: () -> Unit = {}
 ) {
+    val indentPadding = if (!compact) (album.depth * 24).dp else 0.dp
+
     Card(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(4.dp),
+            .padding(start = indentPadding, top = 4.dp, end = 4.dp, bottom = 4.dp),
         shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
@@ -38,7 +41,7 @@ fun AlbumCard(
         if (compact) {
             // 双列网格模式
             Column {
-                // 缩略图占位
+                // 缩略图区域
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -46,23 +49,50 @@ fun AlbumCard(
                         .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = MaterialTheme.colorScheme.surfaceVariant
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text("🖼️", style = MaterialTheme.typography.displaySmall)
+                    if (album.coverImagePath != null) {
+                        AsyncImage(
+                            model = album.coverImagePath,
+                            contentDescription = album.name,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Surface(
+                            modifier = Modifier.fillMaxSize(),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    "🖼️",
+                                    style = MaterialTheme.typography.displaySmall
+                                )
+                            }
                         }
                     }
                 }
-                // 名称
-                Text(
-                    text = album.name,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
-                )
+                // 名称 + 数量
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = album.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (album.imageCount > 0) {
+                        Text(
+                            text = "${album.imageCount}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         } else {
             // 单列列表模式
@@ -72,19 +102,28 @@ fun AlbumCard(
                     .padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 缩略图占位
+                // 缩略图
                 Box(
                     modifier = Modifier
                         .size(56.dp)
                         .clip(MaterialTheme.shapes.small),
                     contentAlignment = Alignment.Center
                 ) {
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = MaterialTheme.colorScheme.surfaceVariant
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text("🖼️")
+                    if (album.coverImagePath != null) {
+                        AsyncImage(
+                            model = album.coverImagePath,
+                            contentDescription = album.name,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Surface(
+                            modifier = Modifier.fillMaxSize(),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("🖼️")
+                            }
                         }
                     }
                 }
@@ -96,11 +135,20 @@ fun AlbumCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Text(
-                        text = "${album.imageCount} 张图片",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "${album.imageCount} 张图片",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (album.children.isNotEmpty()) {
+                            Text(
+                                text = "${album.children.size} 子相册",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                 }
             }
         }

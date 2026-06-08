@@ -8,11 +8,13 @@ import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -21,6 +23,15 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.remophoto.R
+import com.remophoto.ui.albumlist.AlbumListScreen
+import com.remophoto.ui.albumlist.AlbumListViewModel
+import com.remophoto.ui.gallery.GalleryScreen
+import com.remophoto.ui.viewer.FullScreenViewer
+import com.remophoto.ui.settings.SettingsScreen
+import com.remophoto.data.repository.RepositoryManager
+import com.remophoto.ui.repository.RepositoryManagerScreen
+import com.remophoto.ui.repository.RepositoryManagerViewModel
+import com.remophoto.util.PermissionHelper
 
 // ===== 路由定义 =====
 
@@ -63,12 +74,14 @@ sealed class Screen(val route: String) {
  * 应用导航图（单 NavHost）
  *
  * 所有页面路由在此注册。
- * Phase 0 阶段各页面显示占位内容。
+ * 页面间导航通过 NavController 管理。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NavGraph(
-    navController: NavHostController = rememberNavController()
+    navController: NavHostController = rememberNavController(),
+    permissionHelper: PermissionHelper? = null,
+    repositoryManager: RepositoryManager? = null
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -78,6 +91,9 @@ fun NavGraph(
         Screen.AlbumList.ROUTE,
         Screen.Settings.ROUTE
     )
+
+    // 共享 ViewModel 实例（跨页面不需要共享的用独立实例）
+    val albumListViewModel: AlbumListViewModel = viewModel()
 
     Scaffold(
         bottomBar = {
@@ -116,9 +132,20 @@ fun NavGraph(
             startDestination = Screen.AlbumList.ROUTE,
             modifier = Modifier.padding(innerPadding)
         ) {
-            // 相册列表页
+            // 相册列表页（主页）
             composable(Screen.AlbumList.ROUTE) {
-                PlaceholderScreen(title = "相册列表", subtitle = "Phase 0 — 项目骨架已就绪")
+                AlbumListScreen(
+                    viewModel = albumListViewModel,
+                    onAlbumClick = { albumId ->
+                        navController.navigate(Screen.Gallery.createRoute(albumId))
+                    },
+                    onSettingsClick = {
+                        navController.navigate(Screen.Settings.ROUTE)
+                    },
+                    onRepositoryManagerClick = {
+                        navController.navigate(Screen.RepositoryManager.ROUTE)
+                    }
+                )
             }
 
             // 图片网格页
@@ -129,7 +156,13 @@ fun NavGraph(
                 )
             ) { backStackEntry ->
                 val albumId = backStackEntry.arguments?.getLong("albumId") ?: 0L
-                PlaceholderScreen(title = "图片浏览", subtitle = "albumId: $albumId")
+                GalleryScreen(
+                    albumId = albumId,
+                    onImageClick = { index ->
+                        navController.navigate(Screen.Viewer.createRoute(albumId, index))
+                    },
+                    onBack = { navController.popBackStack() }
+                )
             }
 
             // 全屏浏览页
@@ -142,23 +175,43 @@ fun NavGraph(
             ) { backStackEntry ->
                 val albumId = backStackEntry.arguments?.getLong("albumId") ?: 0L
                 val imageIndex = backStackEntry.arguments?.getInt("imageIndex") ?: 0
-                PlaceholderScreen(title = "全屏浏览", subtitle = "albumId: $albumId, index: $imageIndex")
+                FullScreenViewer(
+                    albumId = albumId,
+                    imageIndex = imageIndex,
+                    onBack = { navController.popBackStack() }
+                )
             }
 
             // 设置页
             composable(Screen.Settings.ROUTE) {
-                PlaceholderScreen(title = "设置", subtitle = "全局设置与偏好")
+                SettingsScreen(
+                    onBack = { navController.popBackStack() }
+                )
             }
 
             // 仓库管理页
             composable(Screen.RepositoryManager.ROUTE) {
-                PlaceholderScreen(title = "仓库管理", subtitle = "添加/删除图片仓库")
+                val repoViewModel: RepositoryManagerViewModel = viewModel()
+                // 初始化 RepositoryManager（需要 Activity 绑定的 PermissionHelper）
+                LaunchedEffect(repositoryManager) {
+                    if (repositoryManager != null && repoViewModel.repositoryManager == null) {
+                        repoViewModel.initialize(repositoryManager)
+                    }
+                }
+                RepositoryManagerScreen(
+                    viewModel = repoViewModel,
+                    onBack = { navController.popBackStack() },
+                    onScanComplete = {
+                        // 扫描完成后刷新相册列表
+                        albumListViewModel.refresh()
+                    }
+                )
             }
         }
     }
 }
 
-// ===== 占位页面（Phase 0 使用，后续 Phase 替换为实际实现） =====
+// ===== 占位页面（过渡期使用，后续 Phase 替换为实际实现） =====
 
 /**
  * 占位页面 Composable
