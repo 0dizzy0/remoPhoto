@@ -1,0 +1,46 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android
+/local.properties
+*.iml
+.idea/
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+/app/release/
+
+# Generated
+*/build/
+app/build/
+
+# APK
+*.apk
+*.aab
+*.ap_
+
+# Kotlin
+*.kotlin_module
+
+# ProGuard
+proguard/
+
+# Signing
+*.keystore
+*.jks
+
+# Claude Code
+.claude/
+
+# Build error logs
+buid_error.txt
+
+# Debug
+*.hprof
+
+# Misc
+*.log
+*.tmp

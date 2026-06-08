@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 简化相机/图片图标 -->
+    <group android:translateX="22" android:translateY="22">
+        <!-- 外框 -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M4,12 L4,52 L60,52 L60,12 Z" />
+        <!-- 镜头 -->
+        <path
+            android:fillColor="#1976D2"
+            android:pathData="M22,12 L42,12 L46,20 L54,20 L56,24 L56,48 L8,48 L8,24 L10,20 L18,20 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M32,30 A10,10 0 1,1 32,30.01 Z" />
+        <path
+            android:fillColor="#1976D2"
+            android:pathData="M32,32 A6,6 0 1,1 32,32.01 Z" />
+    </group>
+</vector>
