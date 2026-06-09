@@ -7,11 +7,14 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.remophoto.data.repository.RepositoryManager
+import com.remophoto.data.repository.SettingsRepository
 import com.remophoto.ui.navigation.NavGraph
 import com.remophoto.ui.theme.RemoPhotoTheme
+import com.remophoto.ui.theme.ThemeMode
 import com.remophoto.util.PermissionHelper
 
 /**
@@ -47,13 +50,22 @@ class MainActivity : ComponentActivity() {
 
         // 创建 RepositoryManager
         val app = application as RemoPhotoApp
+        val settingsRepository = app.dependencyContainer.settingsRepository
         repositoryManager = app.dependencyContainer.createRepositoryManager(permissionHelper)
 
         // 边到边显示（状态栏/导航栏透明）
         enableEdgeToEdge()
 
         setContent {
-            RemoPhotoTheme {
+            // 从设置中读取主题模式
+            val themeModeStr by settingsRepository.themeMode.collectAsState(initial = "system")
+            val themeMode = when (themeModeStr) {
+                "light" -> ThemeMode.LIGHT
+                "dark" -> ThemeMode.DARK
+                else -> ThemeMode.SYSTEM
+            }
+
+            RemoPhotoTheme(themeMode = themeMode) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

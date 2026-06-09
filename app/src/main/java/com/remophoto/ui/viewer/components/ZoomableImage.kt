@@ -9,16 +9,23 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntSize
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.remophoto.domain.model.ImageItem
+import com.remophoto.util.AppLogger
 import com.remophoto.util.Constants
 import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
  * 可缩放图片组件
@@ -28,6 +35,7 @@ import kotlin.math.abs
  * - 缩放后单指拖拽 → 平移（消费，距离>20px 后拦截 pager 滑动）
  * - scale==1 + 单指轻点 → 透传给 detectTapGestures（单击/双击）
  * - scale==1 + 单指滑动 → 透传给 HorizontalPager
+ * - 鼠标滚轮 → scale==1 时翻页，scale>1 时缩放
  *
  * 关键：使用 awaitPointerEventScope 替代多个 pointerInput，避免手势竞争。
  */
@@ -37,7 +45,10 @@ fun ZoomableImage(
     scale: Float,
     onScaleChange: (Float) -> Unit,
     onDoubleTap: () -> Unit,
-    onSingleTap: () -> Unit,
+    onSingleTap: (Offset) -> Unit,
+    onLongPress: (Offset) -> Unit = {},
+    onScrollUp: () -> Unit = {},
+    onScrollDown: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -47,6 +58,9 @@ fun ZoomableImage(
     var offsetX by remember { mutableFloatStateOf(0f) }
     var offsetY by remember { mutableFloatStateOf(0f) }
 
+    // 组件尺寸（用于平移边界计算）
+    var containerSize by remember { mutableStateOf(IntSize.Zero) }
+
     // 回到 1× 时重置偏移
     LaunchedEffect(scale) {
         if (scale <= 1f) {
@@ -55,9 +69,34 @@ fun ZoomableImage(
         }
     }
 
+    /**
+     * 约束平移偏移量在图片边界内
+     * 图片以 ContentScale.Fit 显示，计算缩放后图片实际尺寸
+     */
+    fun clampOffset(imgW: Int, imgH: Int) {
+        if (containerSize.width <= 0 || containerSize.height <= 0) return
+        if (imgW <= 0 || imgH <= 0) return
+
+        val viewW = containerSize.width.toFloat()
+        val viewH = containerSize.height.toFloat()
+
+        // 计算 Fit 缩放后的图片显示尺寸
+        val fitScale = min(viewW / imgW, viewH / imgH)
+        val displayW = imgW * fitScale * currentScale
+        val displayH = imgH * fitScale * currentScale
+
+        // 最大允许的平移量（图片边缘不超出视图中心）
+        val maxOffsetX = max(0f, (displayW - viewW) / 2f)
+        val maxOffsetY = max(0f, (displayH - viewH) / 2f)
+
+        offsetX = offsetX.coerceIn(-maxOffsetX, maxOffsetX)
+        offsetY = offsetY.coerceIn(-maxOffsetY, maxOffsetY)
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
+            .onSizeChanged { containerSize = it }
             // 缩放+平移手势（内层，靠近内容，优先接收事件）
             .pointerInput(Unit) {
                 awaitEachGesture {
@@ -75,7 +114,30 @@ fun ZoomableImage(
 
                         if (isUp) break
 
-                        if (changes.size >= 2 || myScale > Constants.MIN_SCALE + 0.01f) {
+                        // 鼠标滚轮事件
+                        if (event.type == PointerEventType.Scroll) {
+                            if (myScale <= Constants.MIN_SCALE + 0.01f) {
+                                // scale==1: 滚轮用于翻页
+                                val scrollDelta = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
+                                if (scrollDelta > 0) {
+                                    onScrollDown()
+                                } else if (scrollDelta < 0) {
+                                    onScrollUp()
+                                }
+                                gestureConsumed = true
+                                changes.forEach { it.consume() }
+                            } else {
+                                // scale>1: 滚轮用于缩放
+                                val scrollDelta = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
+                                val zoomFactor = if (scrollDelta > 0) 0.95f else 1.05f
+                                val newScale = (myScale * zoomFactor)
+                                    .coerceIn(Constants.MIN_SCALE, Constants.MAX_SCALE)
+                                onScaleChange(newScale)
+                                myScale = newScale
+                                gestureConsumed = true
+                                changes.forEach { it.consume() }
+                            }
+                        } else if (changes.size >= 2 || myScale > Constants.MIN_SCALE + 0.01f) {
                             // 双指缩放 或 已缩放状态下的单指平移
                             gestureConsumed = true
                             if (changes.size >= 2) {
@@ -93,6 +155,8 @@ fun ZoomableImage(
                                     offsetX += pan.x
                                     offsetY += pan.y
                                     totalDragDistance += abs(pan.x) + abs(pan.y)
+                                    // 每次平移后约束边界
+                                    clampOffset(image.width, image.height)
                                 }
                                 previousCentroid = change.position
                                 if (totalDragDistance > 20f) {
@@ -114,27 +178,28 @@ fun ZoomableImage(
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = { onDoubleTap() },
-                    onTap = { onSingleTap() }
+                    onTap = { offset -> onSingleTap(offset) },
+                    onLongPress = { offset -> onLongPress(offset) }
                 )
             },
         contentAlignment = Alignment.Center
     ) {
-            AsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(image.filePath)
-                    .crossfade(false)
-                    .build(),
-                contentDescription = image.fileName,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        scaleX = scale
-                        scaleY = scale
-                        translationX = offsetX
-                        translationY = offsetY
-                    },
-                contentScale = ContentScale.Fit
-            )
+        AsyncImage(
+            model = ImageRequest.Builder(context)
+                .data(image.filePath)
+                .crossfade(false)
+                .build(),
+            contentDescription = image.fileName,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offsetX
+                    translationY = offsetY
+                },
+            contentScale = ContentScale.Fit
+        )
     }
 }
 

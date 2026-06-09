@@ -5,8 +5,13 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.remophoto.RemoPhotoApp
 import com.remophoto.domain.model.ImageItem
+import com.remophoto.domain.model.SortOrder
+import com.remophoto.domain.usecase.AlbumCoverManager
 import com.remophoto.data.local.entity.ImageEntity
+import com.remophoto.data.repository.AlbumRepository
 import com.remophoto.data.repository.ImageRepository
+import com.remophoto.data.repository.SettingsRepository
+import com.remophoto.util.AppLogger
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -23,6 +28,8 @@ class FullScreenViewModel(application: Application) : AndroidViewModel(applicati
 
     private val container = (application as RemoPhotoApp).dependencyContainer
     private val imageRepository: ImageRepository = container.imageRepository
+    private val albumRepository: AlbumRepository = container.albumRepository
+    private val settingsRepository: SettingsRepository = container.settingsRepository
 
     // ===== 图片列表 =====
 
@@ -55,6 +62,15 @@ class FullScreenViewModel(application: Application) : AndroidViewModel(applicati
 
     private var currentAlbumId: Long = 0L
 
+    init {
+        // 从设置中读取自动播放间隔
+        viewModelScope.launch {
+            settingsRepository.slideshowInterval.collect { seconds ->
+                _playIntervalMs.value = seconds * 1000L
+            }
+        }
+    }
+
     // ===== 数据加载 =====
 
     fun loadImages(albumId: Long, initialIndex: Int) {
@@ -65,11 +81,23 @@ class FullScreenViewModel(application: Application) : AndroidViewModel(applicati
         currentAlbumId = albumId
         viewModelScope.launch {
             try {
+                // 读取相册自定义排序
+                val albumEntity = albumRepository.getAlbumById(albumId)
+                val albumSortOrder = albumEntity?.sortOrder?.let { SortOrder.fromName(it) }
+                // 读取全局排序
+                val globalSortOrder = settingsRepository.defaultSortOrder.first()
+                val effectiveSort = albumSortOrder ?: globalSortOrder
+
                 imageRepository.getImagesByAlbum(albumId).collect { entities ->
-                    _images.value = entities.map { it.toDomainModel() }
+                    val sorted = sortImageEntities(entities, effectiveSort)
+                    _images.value = sorted.map { it.toDomainModel() }
+                    AppLogger.d(TAG,
+                        "全屏图片排序: albumId=$albumId, sort=${effectiveSort.displayName}, " +
+                        "count=${sorted.size}"
+                    )
                 }
             } catch (e: Exception) {
-                // 保持空列表
+                AppLogger.e(TAG, "加载图片失败", e)
             }
         }
         _currentIndex.value = initialIndex
@@ -162,6 +190,32 @@ class FullScreenViewModel(application: Application) : AndroidViewModel(applicati
             return if (index in list.indices) list[index] else null
         }
 
+    // ===== 设为封面 =====
+
+    fun setAsCover(image: ImageItem, coverManager: AlbumCoverManager) {
+        viewModelScope.launch {
+            try {
+                coverManager.setCustomCover(image.albumId, image.filePath)
+                AppLogger.i("FullScreenVM", "设为封面成功: albumId=${image.albumId}, path=${image.filePath}")
+            } catch (e: Exception) {
+                AppLogger.e("FullScreenVM", "设为封面失败", e)
+            }
+        }
+    }
+
+    // ===== 排序 =====
+
+    private fun sortImageEntities(entities: List<ImageEntity>, order: SortOrder): List<ImageEntity> {
+        return when (order) {
+            SortOrder.NAME_ASC -> entities.sortedBy { it.fileName.lowercase() }
+            SortOrder.NAME_DESC -> entities.sortedByDescending { it.fileName.lowercase() }
+            SortOrder.DATE_MODIFIED_ASC -> entities.sortedBy { it.lastModified }
+            SortOrder.DATE_MODIFIED_DESC -> entities.sortedByDescending { it.lastModified }
+            SortOrder.SIZE_ASC -> entities.sortedBy { it.fileSize }
+            SortOrder.SIZE_DESC -> entities.sortedByDescending { it.fileSize }
+        }
+    }
+
     // ===== 映射 =====
 
     private fun ImageEntity.toDomainModel(): ImageItem {
@@ -177,5 +231,9 @@ class FullScreenViewModel(application: Application) : AndroidViewModel(applicati
             albumId = albumId,
             repositoryId = repositoryId
         )
+    }
+
+    companion object {
+        private const val TAG = "FullScreenVM"
     }
 }

@@ -35,13 +35,28 @@ fun AlbumListScreen(
     viewModel: AlbumListViewModel,
     onAlbumClick: (Long) -> Unit = {},
     onSettingsClick: () -> Unit = {},
-    onRepositoryManagerClick: () -> Unit = {}
+    onRepositoryManagerClick: () -> Unit = {},
+    onCategoriesClick: () -> Unit = {},
+    onAlbumSettingsClick: (Long) -> Unit = {},
+    categoryId: Long? = null,
+    categoryName: String? = null
 ) {
     val albumTree by viewModel.albumTree.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val isEmpty by viewModel.isEmpty.collectAsState()
     val isGridView by viewModel.isGridView.collectAsState()
     val currentPage by viewModel.currentPage.collectAsState()
+    val activeFilterCategoryName by viewModel.filterCategoryName.collectAsState()
+
+    // 外部传入的分类筛选参数
+    LaunchedEffect(categoryId) {
+        if (categoryId != null && categoryName != null) {
+            viewModel.loadAlbumsByCategory(categoryId, categoryName)
+        } else {
+            // 无筛选参数时清除旧筛选状态（防止切换页面后残留）
+            viewModel.clearCategoryFilter()
+        }
+    }
 
     // 当前浏览路径的相册（用于子相册展开导航）
     var browsingAlbumId by remember { mutableStateOf<Long?>(null) }
@@ -51,12 +66,28 @@ fun AlbumListScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = browsingAlbumName ?: "remoPhoto"
-                    )
+                    Column {
+                        Text(
+                            text = browsingAlbumName ?: activeFilterCategoryName ?: "remoPhoto"
+                        )
+                        if (activeFilterCategoryName != null) {
+                            Text(
+                                text = "筛选: $activeFilterCategoryName",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 },
                 navigationIcon = {
-                    if (browsingAlbumId != null) {
+                    if (activeFilterCategoryName != null && browsingAlbumId == null) {
+                        // 分类筛选模式：显示关闭筛选按钮
+                        TextButton(onClick = {
+                            viewModel.clearCategoryFilter()
+                        }) {
+                            Text("✕ 清除筛选")
+                        }
+                    } else if (browsingAlbumId != null) {
                         TextButton(onClick = {
                             browsingAlbumId = null
                             browsingAlbumName = null
@@ -72,6 +103,10 @@ fun AlbumListScreen(
                             imageVector = if (isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
                             contentDescription = if (isGridView) "列表模式" else "网格模式"
                         )
+                    }
+                    // 分类管理入口
+                    IconButton(onClick = onCategoriesClick) {
+                        Text("🏷️", modifier = Modifier.padding(4.dp))
                     }
                     // 仓库管理入口
                     IconButton(onClick = onRepositoryManagerClick) {

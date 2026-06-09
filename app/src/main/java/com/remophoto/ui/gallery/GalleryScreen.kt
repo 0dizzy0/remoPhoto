@@ -34,7 +34,8 @@ fun GalleryScreen(
     albumId: Long,
     albumName: String = "相册",
     onImageClick: (Int) -> Unit = {},
-    onBack: () -> Unit = {}
+    onBack: () -> Unit = {},
+    onAlbumSettingsClick: (Long) -> Unit = {}
 ) {
     val viewModel: GalleryViewModel = viewModel()
 
@@ -76,6 +77,11 @@ fun GalleryScreen(
                     }
                 },
                 actions = {
+                    // 相册设置
+                    IconButton(onClick = { onAlbumSettingsClick(albumId) }) {
+                        Text("⚙️", modifier = Modifier.padding(4.dp))
+                    }
+                    // 布局切换
                     IconButton(onClick = { viewModel.toggleLayoutMode() }) {
                         Icon(
                             imageVector = if (isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,

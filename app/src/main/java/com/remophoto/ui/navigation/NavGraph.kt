@@ -28,6 +28,8 @@ import com.remophoto.ui.albumlist.AlbumListViewModel
 import com.remophoto.ui.gallery.GalleryScreen
 import com.remophoto.ui.viewer.FullScreenViewer
 import com.remophoto.ui.settings.SettingsScreen
+import com.remophoto.ui.categories.CategoryListScreen
+import com.remophoto.ui.albumlist.AlbumSettingsScreen
 import com.remophoto.data.repository.RepositoryManager
 import com.remophoto.ui.repository.RepositoryManagerScreen
 import com.remophoto.ui.repository.RepositoryManagerViewModel
@@ -40,9 +42,15 @@ import com.remophoto.util.PermissionHelper
  */
 sealed class Screen(val route: String) {
 
-    /** 相册列表页（主页） */
-    data object AlbumList : Screen("album_list") {
-        const val ROUTE = "album_list"
+    /** 相册列表页（主页），可选分类筛选参数 */
+    data object AlbumList : Screen("album_list?categoryId={categoryId}&categoryName={categoryName}") {
+        const val ROUTE = "album_list?categoryId={categoryId}&categoryName={categoryName}"
+        const val BASE_ROUTE = "album_list"
+        fun createRoute(categoryId: Long? = null, categoryName: String? = null): String {
+            return if (categoryId != null && categoryName != null)
+                "album_list?categoryId=$categoryId&categoryName=$categoryName"
+            else "album_list"
+        }
     }
 
     /** 图片网格页 */
@@ -66,6 +74,17 @@ sealed class Screen(val route: String) {
     data object RepositoryManager : Screen("repository_manager") {
         const val ROUTE = "repository_manager"
     }
+
+    /** 分类管理页 */
+    data object Categories : Screen("categories") {
+        const val ROUTE = "categories"
+    }
+
+    /** 单相册设置页 */
+    data object AlbumSettings : Screen("album_settings/{albumId}") {
+        const val ROUTE = "album_settings/{albumId}"
+        fun createRoute(albumId: Long) = "album_settings/$albumId"
+    }
 }
 
 // ===== 导航图 =====
@@ -87,10 +106,9 @@ fun NavGraph(
     val currentRoute = navBackStackEntry?.destination?.route
 
     // 判断是否需要显示底部导航栏（仅主页和设置页显示）
-    val showBottomBar = currentRoute in listOf(
-        Screen.AlbumList.ROUTE,
-        Screen.Settings.ROUTE
-    )
+    // AlbumList 路由可能有查询参数，所以用 base route 匹配
+    val showBottomBar = currentRoute?.startsWith(Screen.AlbumList.BASE_ROUTE) == true
+            || currentRoute == Screen.Settings.ROUTE
 
     // 共享 ViewModel 实例（跨页面不需要共享的用独立实例）
     val albumListViewModel: AlbumListViewModel = viewModel()
@@ -102,11 +120,11 @@ fun NavGraph(
                     NavigationBarItem(
                         icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = null) },
                         label = { Text(stringResource(R.string.album_list)) },
-                        selected = currentRoute == Screen.AlbumList.ROUTE,
+                        selected = currentRoute?.startsWith(Screen.AlbumList.BASE_ROUTE) == true,
                         onClick = {
-                            if (currentRoute != Screen.AlbumList.ROUTE) {
-                                navController.navigate(Screen.AlbumList.ROUTE) {
-                                    popUpTo(Screen.AlbumList.ROUTE) { inclusive = true }
+                            if (currentRoute?.startsWith(Screen.AlbumList.BASE_ROUTE) != true) {
+                                navController.navigate(Screen.AlbumList.BASE_ROUTE) {
+                                    popUpTo(Screen.AlbumList.BASE_ROUTE) { inclusive = true }
                                 }
                             }
                         }
@@ -132,8 +150,24 @@ fun NavGraph(
             startDestination = Screen.AlbumList.ROUTE,
             modifier = Modifier.padding(innerPadding)
         ) {
-            // 相册列表页（主页）
-            composable(Screen.AlbumList.ROUTE) {
+            // 相册列表页（主页），可选分类筛选
+            composable(
+                route = Screen.AlbumList.ROUTE,
+                arguments = listOf(
+                    navArgument("categoryId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("categoryName") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
+                )
+            ) { backStackEntry ->
+                val categoryId = backStackEntry.arguments?.getString("categoryId")?.toLongOrNull()
+                val categoryName = backStackEntry.arguments?.getString("categoryName")
                 AlbumListScreen(
                     viewModel = albumListViewModel,
                     onAlbumClick = { albumId ->
@@ -144,7 +178,15 @@ fun NavGraph(
                     },
                     onRepositoryManagerClick = {
                         navController.navigate(Screen.RepositoryManager.ROUTE)
-                    }
+                    },
+                    onCategoriesClick = {
+                        navController.navigate(Screen.Categories.ROUTE)
+                    },
+                    onAlbumSettingsClick = { albumId ->
+                        navController.navigate(Screen.AlbumSettings.createRoute(albumId))
+                    },
+                    categoryId = categoryId,
+                    categoryName = categoryName
                 )
             }
 
@@ -161,7 +203,10 @@ fun NavGraph(
                     onImageClick = { index ->
                         navController.navigate(Screen.Viewer.createRoute(albumId, index))
                     },
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onAlbumSettingsClick = { id ->
+                        navController.navigate(Screen.AlbumSettings.createRoute(id))
+                    }
                 )
             }
 
@@ -205,6 +250,35 @@ fun NavGraph(
                         // 扫描完成后刷新相册列表
                         albumListViewModel.refresh()
                     }
+                )
+            }
+
+            // 分类管理页
+            composable(Screen.Categories.ROUTE) {
+                CategoryListScreen(
+                    onBack = { navController.popBackStack() },
+                    onCategoryClick = { categoryId, categoryName ->
+                        // 点击分类：回到相册列表并按分类筛选
+                        navController.navigate(
+                            Screen.AlbumList.createRoute(categoryId, categoryName)
+                        ) {
+                            popUpTo(Screen.AlbumList.BASE_ROUTE) { inclusive = false }
+                        }
+                    }
+                )
+            }
+
+            // 单相册设置页
+            composable(
+                route = Screen.AlbumSettings.ROUTE,
+                arguments = listOf(
+                    navArgument("albumId") { type = NavType.LongType }
+                )
+            ) { backStackEntry ->
+                val albumId = backStackEntry.arguments?.getLong("albumId") ?: 0L
+                AlbumSettingsScreen(
+                    albumId = albumId,
+                    onBack = { navController.popBackStack() }
                 )
             }
         }

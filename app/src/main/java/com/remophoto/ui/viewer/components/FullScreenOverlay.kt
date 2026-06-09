@@ -43,8 +43,10 @@ fun FullScreenOverlay(
     currentIndex: Int,
     totalCount: Int,
     isPlaying: Boolean,
+    intervalSeconds: Int = 3,
     onBack: () -> Unit,
     onTogglePlay: () -> Unit,
+    onIntervalChange: (Int) -> Unit = {},
     onSeekTo: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -82,7 +84,9 @@ fun FullScreenOverlay(
                 currentIndex = currentIndex,
                 totalCount = totalCount,
                 isPlaying = isPlaying,
+                intervalSeconds = intervalSeconds,
                 onTogglePlay = onTogglePlay,
+                onIntervalChange = onIntervalChange,
                 onSeekTo = onSeekTo
             )
         }
@@ -141,7 +145,9 @@ private fun BottomOverlayBar(
     currentIndex: Int,
     totalCount: Int,
     isPlaying: Boolean,
+    intervalSeconds: Int,
     onTogglePlay: () -> Unit,
+    onIntervalChange: (Int) -> Unit,
     onSeekTo: (Int) -> Unit
 ) {
     Surface(
@@ -154,32 +160,32 @@ private fun BottomOverlayBar(
                 .navigationBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            // 进度条
-            ViewerProgressBar(
-                currentIndex = currentIndex,
-                totalCount = totalCount,
-                onSeek = onSeekTo
-            )
-
-            // 播放控制（紧凑布局）
+            // 进度条 + 计数标签
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(28.dp),
-                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(
-                    onClick = onTogglePlay,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
-                ) {
-                    Text(
-                        text = if (isPlaying) "⏸ 暂停" else "▶ 播放",
-                        color = Color.White,
-                        fontSize = 12.sp
-                    )
-                }
+                Text(
+                    text = "${currentIndex + 1} / $totalCount",
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 11.sp,
+                    modifier = Modifier.width(56.dp)
+                )
+                ViewerProgressBar(
+                    currentIndex = currentIndex,
+                    totalCount = totalCount,
+                    onSeek = onSeekTo,
+                    modifier = Modifier.weight(1f)
+                )
             }
+
+            // 播放控制
+            SlideshowControl(
+                isPlaying = isPlaying,
+                intervalSeconds = intervalSeconds,
+                onTogglePlay = onTogglePlay,
+                onIntervalChange = onIntervalChange
+            )
         }
     }
 }

@@ -10,6 +10,9 @@ import com.remophoto.data.local.entity.AlbumEntity
 import com.remophoto.data.local.entity.ImageEntity
 import com.remophoto.data.repository.AlbumRepository
 import com.remophoto.data.repository.ImageRepository
+import com.remophoto.data.repository.SettingsRepository
+import com.remophoto.domain.model.SortOrder
+import com.remophoto.util.AppLogger
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -23,6 +26,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     private val container = (application as RemoPhotoApp).dependencyContainer
     private val imageRepository: ImageRepository = container.imageRepository
     private val albumRepository: AlbumRepository = container.albumRepository
+    private val settingsRepository: SettingsRepository = container.settingsRepository
 
     // ===== 状态 =====
 
@@ -69,10 +73,20 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
 
-                // 加载图片列表（Flow 响应式）
+                // 确定排序方式：单相册设置 > 全局设置
+                val albumSortOrder = albumEntity?.sortOrder?.let { SortOrder.fromName(it) }
+                val globalSortOrder = settingsRepository.defaultSortOrder.first()
+
+                // 加载图片列表（Flow 响应式），按排序方式排序
                 imageRepository.getImagesByAlbum(albumId).collect { imageEntities ->
-                    _images.value = imageEntities.map { it.toDomainModel() }
+                    val effectiveSort = albumSortOrder ?: globalSortOrder
+                    val sorted = sortImageEntities(imageEntities, effectiveSort)
+                    _images.value = sorted.map { it.toDomainModel() }
                     _isLoading.value = false
+                    AppLogger.d(TAG,
+                        "图片排序: albumId=$albumId, sort=${effectiveSort.displayName}, " +
+                        "custom=${albumSortOrder != null}"
+                    )
                 }
             } catch (e: Exception) {
                 _isLoading.value = false
@@ -82,6 +96,19 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
     fun toggleLayoutMode() {
         _isGridView.value = !_isGridView.value
+    }
+
+    // ===== 排序 =====
+
+    private fun sortImageEntities(entities: List<ImageEntity>, order: SortOrder): List<ImageEntity> {
+        return when (order) {
+            SortOrder.NAME_ASC -> entities.sortedBy { it.fileName.lowercase() }
+            SortOrder.NAME_DESC -> entities.sortedByDescending { it.fileName.lowercase() }
+            SortOrder.DATE_MODIFIED_ASC -> entities.sortedBy { it.lastModified }
+            SortOrder.DATE_MODIFIED_DESC -> entities.sortedByDescending { it.lastModified }
+            SortOrder.SIZE_ASC -> entities.sortedBy { it.fileSize }
+            SortOrder.SIZE_DESC -> entities.sortedByDescending { it.fileSize }
+        }
     }
 
     // ===== 映射方法 =====
@@ -99,5 +126,9 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             albumId = albumId,
             repositoryId = repositoryId
         )
+    }
+
+    companion object {
+        private const val TAG = "GalleryVM"
     }
 }

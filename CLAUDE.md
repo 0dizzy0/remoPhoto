@@ -15,7 +15,7 @@
 | 项目 | 详情 |
 |------|------|
 | 包名 | `com.remophoto` |
-| 当前阶段 | Phase 0 ✅ → Phase 1 ✅ → Phase 2 待开始 |
+| 当前阶段 | Phase 0 ✅ → Phase 1 ✅ → Phase 2 ✅ → Phase 3 待开始 |
 | minSdk / targetSdk | 29 / 35 |
 | 架构 | MVVM + Repository，手动 DI（`DependencyContainer`） |
 | 数据库 | Room 2.6.1 + KSP，7 张表 |
@@ -34,5 +34,18 @@
 - ✅ 编译通过，App 已安装到真机验证
 - ✅ Git 已提交（3 个 commit），Gradle Wrapper 已就绪
 - ⚠️ Room `exportSchema = true` 未配 `schemaLocation`（KSP warning，非阻塞）
-- ⚠️ 主题切换 API 已就绪，UI 切换入口留待 Phase 2
+- ✅ 主题切换 UI 入口已在 Phase 2 完成
+
+### Phase 2 完成情况（2026-06-09）✅ 已收敛
+
+**P2-01~P2-05 手势交互:** 点击区域翻页、音量键翻页、鼠标滚轮翻页、长按菜单、平移边界约束
+**P2-06~P2-09 分类管理:** CategoryManager + 分类 UI + 树形筛选 + 多对多关联
+**P2-10~P2-12 分页:** PageNavigator 智能页码 + 跳页弹窗
+**P2-13~P2-16 播放:** SlideshowControl 间隔选择器 + 缩略图禁用动图（独立 loader）
+**P2-17~P2-19 设置:** SettingsScreen + AlbumSettingsScreen + 主题切换接入
+**P2-F01~F07 缺陷:** FocusRequester 崩溃、排序错位、Flow 阻塞、标签删除、分类筛选、状态残留
+
+**新增文件:** CategoryManager, CategoryListScreen, CategoryViewModel, AlbumSettingsScreen, AlbumSettingsViewModel, file_paths.xml
+**新增路由:** `categories`, `album_settings/{albumId}`, `album_list?categoryId=&categoryName=`
+**遗留 Phase 3:** 相册快速滚动条、大型仓库扫描优化、导入/导出数据库
 

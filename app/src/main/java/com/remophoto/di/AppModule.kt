@@ -13,6 +13,7 @@ import com.remophoto.data.repository.RepositoryManager
 import com.remophoto.data.repository.SettingsRepository
 import com.remophoto.data.scanner.FileScanner
 import com.remophoto.domain.usecase.AlbumCoverManager
+import com.remophoto.domain.usecase.CategoryManager
 import com.remophoto.domain.usecase.CreateAlbumsUseCase
 import com.remophoto.domain.usecase.ScanImagesUseCase
 import com.remophoto.domain.usecase.SortImagesUseCase
@@ -52,6 +53,7 @@ class DependencyContainer(private val app: RemoPhotoApp) {
     // ===== 工具类 =====
 
     val imageLoader: ImageLoader by lazy { ImageLoaderFactory.create(app) }
+    val thumbnailImageLoader: ImageLoader by lazy { ImageLoaderFactory.createThumbnailLoader(app) }
     val fileScanner: FileScanner by lazy { FileScanner(app) }
 
     // ===== UseCase =====
@@ -64,6 +66,9 @@ class DependencyContainer(private val app: RemoPhotoApp) {
     }
     val albumCoverManager: AlbumCoverManager by lazy {
         AlbumCoverManager(albumDao, imageDao)
+    }
+    val categoryManager: CategoryManager by lazy {
+        CategoryManager(categoryDao)
     }
     val sortImagesUseCase: SortImagesUseCase by lazy { SortImagesUseCase() }
 

@@ -35,4 +35,10 @@ class ImageRepository(private val imageDao: ImageDao) {
 
     suspend fun deleteByRepository(repoId: Long) =
         imageDao.deleteByRepository(repoId)
+
+    suspend fun getTotalFileSize() =
+        imageDao.getTotalFileSize()
+
+    suspend fun getTotalCount() =
+        imageDao.getTotalCount()
 }

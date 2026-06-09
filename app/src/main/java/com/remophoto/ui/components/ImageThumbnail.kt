@@ -51,6 +51,9 @@ fun ImageThumbnail(
         ) {
             // 记忆化请求：使用 id+filePath 作为缓存键，避免不同图片共享相同路径的缓存
             val ctx = androidx.compose.ui.platform.LocalContext.current
+            val app = ctx.applicationContext as com.remophoto.RemoPhotoApp
+            val thumbLoader = app.dependencyContainer.thumbnailImageLoader
+
             val thumbRequest = remember(image.id, image.filePath) {
                 ImageRequest.Builder(ctx)
                     .data(image.filePath)
@@ -70,6 +73,7 @@ fun ImageThumbnail(
 
             coil.compose.SubcomposeAsyncImage(
                 model = thumbRequest,
+                imageLoader = thumbLoader,
                 contentDescription = image.fileName,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,

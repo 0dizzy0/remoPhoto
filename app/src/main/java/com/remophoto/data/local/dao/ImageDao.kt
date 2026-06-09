@@ -73,4 +73,8 @@ interface ImageDao {
     /** 获取表总行数 */
     @Query("SELECT COUNT(*) FROM images")
     suspend fun getTotalCount(): Int
+
+    /** 获取所有图片的总文件大小 */
+    @Query("SELECT COALESCE(SUM(file_size), 0) FROM images")
+    suspend fun getTotalFileSize(): Long
 }

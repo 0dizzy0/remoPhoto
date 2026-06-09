@@ -39,6 +39,10 @@ interface CategoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCrossRef(crossRef: AlbumCategoryCrossRef)
 
+    /** 删除特定相册-分类关联 */
+    @Query("DELETE FROM album_category_cross_ref WHERE albumId = :albumId AND categoryId = :categoryId")
+    suspend fun deleteCrossRef(albumId: Long, categoryId: Long)
+
     /** 删除某相册的所有分类关联 */
     @Query("DELETE FROM album_category_cross_ref WHERE albumId = :albumId")
     suspend fun deleteCrossRefsByAlbum(albumId: Long)

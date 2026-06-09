@@ -16,7 +16,7 @@ import coil.util.DebugLogger
 object ImageLoaderFactory {
 
     /**
-     * 创建全局 ImageLoader 实例
+     * 创建全局 ImageLoader 实例（含 GIF/WebP 动图支持，用于全屏浏览）
      *
      * @param context Application Context
      */
@@ -47,6 +47,29 @@ object ImageLoaderFactory {
             .crossfade(300)
             // 调试日志（Release 时移除）
             // .logger(DebugLogger())
+            .build()
+    }
+
+    /**
+     * 创建缩略图专用 ImageLoader（不含动图解码，提升列表滚动流畅度）
+     *
+     * 与全局 loader 共享同一磁盘缓存目录。
+     */
+    fun createThumbnailLoader(context: Context): ImageLoader {
+        return ImageLoader.Builder(context)
+            .memoryCache {
+                MemoryCache.Builder(context)
+                    .maxSizeBytes(Constants.MEMORY_CACHE_SIZE / 2) // 缩略图用一半内存
+                    .build()
+            }
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(context.cacheDir.resolve("image_cache"))
+                    .maxSizeBytes(Constants.THUMBNAIL_CACHE_SIZE.toLong())
+                    .build()
+            }
+            // 不添加 GIF/ImageDecoder 解码器 ← 关键：缩略图不播放动图
+            .crossfade(200)
             .build()
     }
 }

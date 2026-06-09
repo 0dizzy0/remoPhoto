@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.remophoto.RemoPhotoApp
 import com.remophoto.domain.model.Album
 import com.remophoto.domain.model.SortOrder
+import com.remophoto.domain.usecase.CategoryManager
 import com.remophoto.data.local.entity.AlbumEntity
 import com.remophoto.data.repository.AlbumRepository
 import com.remophoto.data.repository.SettingsRepository
@@ -23,6 +24,7 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
     private val container = (application as RemoPhotoApp).dependencyContainer
     private val albumRepository: AlbumRepository = container.albumRepository
     private val settingsRepository: SettingsRepository = container.settingsRepository
+    private val categoryManager: CategoryManager = container.categoryManager
 
     // ===== 状态 =====
 
@@ -47,6 +49,13 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val _albumsPerPage = MutableStateFlow(20)
     val albumsPerPage: StateFlow<Int> = _albumsPerPage.asStateFlow()
+
+    // 分类筛选状态
+    private val _filterCategoryId = MutableStateFlow<Long?>(null)
+    val filterCategoryId: StateFlow<Long?> = _filterCategoryId.asStateFlow()
+
+    private val _filterCategoryName = MutableStateFlow<String?>(null)
+    val filterCategoryName: StateFlow<String?> = _filterCategoryName.asStateFlow()
 
     init {
         loadSettings()
@@ -99,7 +108,68 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
      * 手动刷新相册列表（用于添加仓库或扫描完成后刷新）
      */
     fun refresh() {
+        if (_filterCategoryId.value != null) {
+            loadAlbumsByCategory(_filterCategoryId.value!!, _filterCategoryName.value ?: "")
+        } else {
+            loadAlbums()
+        }
+    }
+
+    /**
+     * 按分类加载相册
+     */
+    fun loadAlbumsByCategory(categoryId: Long, categoryName: String) {
+        _filterCategoryId.value = categoryId
+        _filterCategoryName.value = categoryName
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val categoryAlbums = categoryManager.getAlbumIdsForCategory(categoryId).toSet()
+                albumRepository.getRootAlbums().collect { rootAlbums ->
+                    _allAlbums.value = rootAlbums
+                    val tree = buildAlbumTree(rootAlbums)
+                    // 筛选：只保留该分类下的相册及其祖先
+                    val filteredTree = filterTreeByCategory(tree, categoryAlbums)
+                    _albumTree.value = filteredTree
+                    _isEmpty.value = filteredTree.isEmpty()
+                    _isLoading.value = false
+                    AppLogger.i(TAG,
+                        "分类筛选: category=\"$categoryName\"(id=$categoryId), " +
+                        "匹配相册=${categoryAlbums.size}, 显示树=${filteredTree.size}"
+                    )
+                }
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "按分类加载相册失败", e)
+                _isLoading.value = false
+            }
+        }
+    }
+
+    /**
+     * 清除分类筛选，回到全部相册
+     */
+    fun clearCategoryFilter() {
+        _filterCategoryId.value = null
+        _filterCategoryName.value = null
         loadAlbums()
+    }
+
+    /**
+     * 筛选相册树：保留属于分类的相册及其祖先
+     */
+    private fun filterTreeByCategory(tree: List<Album>, categoryAlbumIds: Set<Long>): List<Album> {
+        return tree.mapNotNull { album -> filterNode(album, categoryAlbumIds) }
+    }
+
+    private fun filterNode(album: Album, categoryAlbumIds: Set<Long>): Album? {
+        val filteredChildren = album.children.mapNotNull { filterNode(it, categoryAlbumIds) }
+        val isMatch = album.id in categoryAlbumIds
+        val hasMatchingChildren = filteredChildren.isNotEmpty()
+        return if (isMatch || hasMatchingChildren) {
+            album.copy(children = filteredChildren)
+        } else {
+            null
+        }
     }
 
     // ===== 树形结构构建 =====

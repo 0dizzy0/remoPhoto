@@ -2,19 +2,21 @@ package com.remophoto.domain.usecase
 
 import com.remophoto.data.local.dao.AlbumDao
 import com.remophoto.data.local.dao.ImageDao
+import com.remophoto.data.local.entity.ImageEntity
+import com.remophoto.domain.model.SortOrder
 import com.remophoto.util.AppLogger
 
 /**
  * 相册封面管理器
  *
  * 封装封面选取策略：
- * - 默认取该目录下第一张图片（按文件名升序排列）
+ * - 默认取该目录下第一张图片（按当前排序方式选取）
  * - 支持手动设置封面（自定义封面路径持久化）
  * - 原封面被删除后自动选取新封面
  *
  * 规则：
  * - 若已设置自定义封面 → 保持不变
- * - 否则 → 自动选取文件名字母序第一张
+ * - 否则 → 自动按排序方式选取第一张
  * - 若当前封面图片被删除 → 自动重新选取
  */
 class AlbumCoverManager(
@@ -25,7 +27,7 @@ class AlbumCoverManager(
     /**
      * 自动为所有相册选取封面
      *
-     * 扫描完成后批量调用。
+     * 扫描完成后批量调用。按每个相册的排序设置选取封面。
      */
     suspend fun autoSelectAllCovers() {
         val allAlbums = albumDao.getAllAlbumsList()
@@ -39,11 +41,12 @@ class AlbumCoverManager(
             // 如果已有自定义封面，跳过
             if (album.coverImagePath != null) {
                 skipped++
-                AppLogger.d(TAG, "相册 \"${album.name}\" (id=$album.id) 已有自定义封面，跳过")
+                AppLogger.d(TAG, "相册 \"${album.name}\" (id=${album.id}) 已有自定义封面，跳过")
                 continue
             }
 
-            val coverPath = autoSelectCover(album.id)
+            val sortOrder = album.sortOrder?.let { SortOrder.fromName(it) } ?: SortOrder.DEFAULT
+            val coverPath = selectCoverWithSort(album.id, sortOrder)
             if (coverPath != null) {
                 selected++
             } else {
@@ -58,19 +61,32 @@ class AlbumCoverManager(
     }
 
     /**
-     * 自动为单个相册选取封面
+     * 自动为单个相册选取封面（使用默认排序）
      *
      * @param albumId 相册 ID
      * @return 封面图片路径，若相册为空则返回 null
      */
     suspend fun autoSelectCover(albumId: Long): String? {
         val album = albumDao.getAlbumById(albumId)
+        val sortOrder = album?.sortOrder?.let { SortOrder.fromName(it) } ?: SortOrder.DEFAULT
+        return selectCoverWithSort(albumId, sortOrder)
+    }
+
+    /**
+     * 按指定排序方式选取第一张图片作为封面
+     */
+    private suspend fun selectCoverWithSort(albumId: Long, sortOrder: SortOrder): String? {
+        val album = albumDao.getAlbumById(albumId)
         val albumName = album?.name ?: "unknown"
         val imageCount = imageDao.getImageCountByAlbum(albumId)
 
-        AppLogger.d(TAG, "选取封面: albumId=$albumId, name=\"$albumName\", imageCount=$imageCount")
+        AppLogger.d(TAG, "选取封面: albumId=$albumId, name=\"$albumName\", imageCount=$imageCount, sort=${sortOrder.displayName}")
 
-        val firstImage = imageDao.getFirstImageByAlbum(albumId)
+        // 获取所有图片并按排序方式取第一张
+        val allImages = imageDao.getImagesByAlbumSorted(albumId)
+        val sorted = sortImages(allImages, sortOrder)
+        val firstImage = sorted.firstOrNull()
+
         return if (firstImage != null) {
             // 验证封面图片确实属于该相册
             if (firstImage.albumId != albumId && firstImage.albumId != 0L) {
@@ -89,6 +105,20 @@ class AlbumCoverManager(
         } else {
             AppLogger.w(TAG, "相册 \"$albumName\" (id=$albumId) 中无图片，封面留空")
             null
+        }
+    }
+
+    /**
+     * 按排序方式对图片列表排序
+     */
+    private fun sortImages(images: List<ImageEntity>, order: SortOrder): List<ImageEntity> {
+        return when (order) {
+            SortOrder.NAME_ASC -> images.sortedBy { it.fileName.lowercase() }
+            SortOrder.NAME_DESC -> images.sortedByDescending { it.fileName.lowercase() }
+            SortOrder.DATE_MODIFIED_ASC -> images.sortedBy { it.lastModified }
+            SortOrder.DATE_MODIFIED_DESC -> images.sortedByDescending { it.lastModified }
+            SortOrder.SIZE_ASC -> images.sortedBy { it.fileSize }
+            SortOrder.SIZE_DESC -> images.sortedByDescending { it.fileSize }
         }
     }
 
