@@ -8,6 +8,7 @@ import com.remophoto.RemoPhotoApp
 import com.remophoto.data.local.entity.RepositoryEntity
 import com.remophoto.data.repository.RepositoryManager
 import com.remophoto.domain.usecase.ScanImagesUseCase
+import com.remophoto.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -61,6 +62,9 @@ class RepositoryManagerViewModel(application: Application) : AndroidViewModel(ap
 
     /** 当前扫描协程的 Job，用于取消 */
     private var scanJob: Job? = null
+
+    /** 等待扫描的仓库 ID 队列（当已有扫描进行中时排队） */
+    private val scanQueue = mutableListOf<Long>()
 
     /**
      * 初始化：加载仓库列表
@@ -131,18 +135,35 @@ class RepositoryManagerViewModel(application: Application) : AndroidViewModel(ap
     fun cancelScan() {
         scanJob?.cancel()
         scanJob = null
+        scanQueue.clear()
         _isScanning.value = false
         _scanningRepoId.value = null
         _scanMessage.value = "扫描已取消"
     }
 
     /**
-     * 执行全量扫描
+     * 执行全量扫描（排队机制：若有扫描进行中则排队等待）
      */
     fun startScan(repoId: Long) {
         val manager = repositoryManager ?: return
-        // 如果已有扫描在进行中，先取消
-        scanJob?.cancel()
+        // 去重：已在扫描队列中则跳过
+        if (_scanningRepoId.value == repoId || scanQueue.contains(repoId)) return
+
+        // 如果已有扫描在进行中，加入队列排队
+        if (_isScanning.value || scanJob?.isActive == true) {
+            scanQueue.add(repoId)
+            _scanMessage.value = "已有扫描进行中，新任务已排队…"
+            AppLogger.i("RepoManager", "扫描排队: repoId=$repoId, 队列=${scanQueue.size}")
+            return
+        }
+
+        executeScan(repoId, manager)
+    }
+
+    /**
+     * 实际执行扫描（内部方法）
+     */
+    private fun executeScan(repoId: Long, manager: RepositoryManager) {
         scanJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 _isScanning.value = true
@@ -153,7 +174,7 @@ class RepositoryManagerViewModel(application: Application) : AndroidViewModel(ap
 
                 val repo = manager.getRepositoryById(repoId) ?: run {
                     _errorMessage.value = "仓库不存在"
-                    _isScanning.value = false
+                    finishScanAndDequeue(manager)
                     return@launch
                 }
 
@@ -180,20 +201,29 @@ class RepositoryManagerViewModel(application: Application) : AndroidViewModel(ap
 
                 kotlinx.coroutines.delay(500)
 
-                _isScanning.value = false
-                _scanningRepoId.value = null
-                scanJob = null
             } catch (e: kotlinx.coroutines.CancellationException) {
-                _isScanning.value = false
-                _scanningRepoId.value = null
-                scanJob = null
-                // 取消是预期行为，不需要显示错误
+                // 取消是预期行为，不显示错误
             } catch (e: Exception) {
                 _errorMessage.value = "扫描失败: ${e.message}"
-                _isScanning.value = false
-                _scanningRepoId.value = null
-                scanJob = null
+            } finally {
+                finishScanAndDequeue(manager)
             }
+        }
+    }
+
+    /**
+     * 完成当前扫描，处理队列中下一个
+     */
+    private fun finishScanAndDequeue(manager: RepositoryManager) {
+        _isScanning.value = false
+        _scanningRepoId.value = null
+        scanJob = null
+
+        // 处理队列中下一个仓库
+        if (scanQueue.isNotEmpty()) {
+            val nextRepoId = scanQueue.removeAt(0)
+            AppLogger.i("RepoManager", "扫描队列出队: repoId=$nextRepoId, 剩余=${scanQueue.size}")
+            executeScan(nextRepoId, manager)
         }
     }
 

@@ -4,8 +4,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.GridView
@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.remophoto.domain.model.ImageItem
 import com.remophoto.ui.components.ImageThumbnail
+import com.remophoto.util.AppLogger
 
 /**
  * 图片网格页面
@@ -47,6 +48,12 @@ fun GalleryScreen(
     }
 
     val displayName = album?.name ?: albumName
+
+    // 防重复导航保护（切换相册时重置）
+    var isNavigating by remember { mutableStateOf(false) }
+    LaunchedEffect(albumId) {
+        isNavigating = false
+    }
 
     Scaffold(
         topBar = {
@@ -121,11 +128,18 @@ fun GalleryScreen(
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    items(images, key = { it.id }) { image ->
-                        val index = images.indexOf(image)
+                    itemsIndexed(images, key = { _, item -> item.id }) { index, image ->
                         ImageThumbnail(
                             image = image,
-                            onClick = { onImageClick(index) }
+                            onClick = {
+                                if (isNavigating) return@ImageThumbnail
+                                isNavigating = true
+                                AppLogger.i(TAG,
+                                    "点击缩略图: albumId=$albumId, index=$index, " +
+                                    "fileName=${image.fileName}"
+                                )
+                                onImageClick(index)
+                            }
                         )
                     }
                 }
@@ -138,11 +152,18 @@ fun GalleryScreen(
                     contentPadding = PaddingValues(4.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    items(images, key = { it.id }) { image ->
-                        val index = images.indexOf(image)
+                    itemsIndexed(images, key = { _, item -> item.id }) { index, image ->
                         ImageListItem(
                             image = image,
-                            onClick = { onImageClick(index) }
+                            onClick = {
+                                if (isNavigating) return@ImageListItem
+                                isNavigating = true
+                                AppLogger.i(TAG,
+                                    "点击列表项: albumId=$albumId, index=$index, " +
+                                    "fileName=${image.fileName}"
+                                )
+                                onImageClick(index)
+                            }
                         )
                     }
                 }
@@ -199,3 +220,5 @@ private fun ImageListItem(
         }
     }
 }
+
+private const val TAG = "Gallery"

@@ -6,6 +6,8 @@
 
 4、设置镜像源时，确保可达性，同时确认目标版本在源仓库上存在
 
+5、关键步骤需要加入可观测的日志，以供后续分析定位问题
+
 ---
 
 ## 项目状态
@@ -13,7 +15,7 @@
 | 项目 | 详情 |
 |------|------|
 | 包名 | `com.remophoto` |
-| 当前阶段 | Phase 0 ✅ → Phase 1 进行中 |
+| 当前阶段 | Phase 0 ✅ → Phase 1 ✅ → Phase 2 待开始 |
 | minSdk / targetSdk | 29 / 35 |
 | 架构 | MVVM + Repository，手动 DI（`DependencyContainer`） |
 | 数据库 | Room 2.6.1 + KSP，7 张表 |

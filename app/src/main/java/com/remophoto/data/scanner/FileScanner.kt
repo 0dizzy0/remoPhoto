@@ -7,6 +7,7 @@ import android.provider.OpenableColumns
 import androidx.documentfile.provider.DocumentFile
 import com.remophoto.data.local.dao.ImageDao
 import com.remophoto.data.local.entity.ImageEntity
+import com.remophoto.util.AppLogger
 import com.remophoto.util.Constants
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -335,12 +336,65 @@ class FileScanner(val context: Context) {
 
     /**
      * 根据图片的父目录路径找到对应的相册 ID
+     *
+     * 路径匹配策略：
+     * 1. 精确匹配
+     * 2. 规范化匹配（去除尾部 /、URL 解码后比较）
+     * 3. 模糊匹配（仅按路径末尾匹配）
      */
     private fun findAlbumId(parentPath: String, albumIdMap: Map<String, Long>): Long {
-        // 按路径精确匹配
+        // 1. 精确匹配
         albumIdMap[parentPath]?.let { return it }
-        // 若没有匹配，返回 0（不属于任何相册）
+
+        // 2. 规范化匹配：去除尾部斜杠、URL 解码
+        val normalizedPath = normalizePath(parentPath)
+        for ((key, value) in albumIdMap) {
+            if (normalizePath(key) == normalizedPath) {
+                return value
+            }
+        }
+
+        // 3. 模糊匹配：尝试按路径最后一段（目录名）匹配
+        //   仅当 albumIdMap 中只有一个匹配时使用
+        val lastSegment = normalizedPath.substringAfterLast('/')
+        if (lastSegment.isNotBlank()) {
+            val candidates = albumIdMap.filter { (key, _) ->
+                normalizePath(key).endsWith("/$lastSegment")
+            }
+            if (candidates.size == 1) {
+                return candidates.values.first()
+            }
+        }
+
+        // 匹配失败 — 记录 WARN 日志
+        if (albumIdMap.isNotEmpty()) {
+            val sampleKeys = albumIdMap.keys.take(3).joinToString(" | ")
+            AppLogger.w("FileScanner",
+                "图片父目录无法匹配任何相册: parentPath=$parentPath, " +
+                "normalized=$normalizedPath, sampleAlbumPaths=[$sampleKeys]"
+            )
+        }
+
+        // 返回 0（不属于任何相册）
         return 0L
+    }
+
+    /**
+     * 规范化目录路径：去除尾部 /、URL 解码
+     */
+    private fun normalizePath(path: String): String {
+        var normalized = path.trimEnd('/')
+        // 尝试 URL 解码（处理 SAF URI 中的 % 编码）
+        try {
+            val decoded = java.net.URLDecoder.decode(normalized, "UTF-8")
+            // 仅在解码结果与原值不同时使用解码值（避免双重解码）
+            if (decoded != normalized) {
+                normalized = decoded
+            }
+        } catch (_: Exception) {
+            // 解码失败，保持原路径
+        }
+        return normalized
     }
 
     /**

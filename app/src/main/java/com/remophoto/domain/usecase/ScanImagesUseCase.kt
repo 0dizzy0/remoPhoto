@@ -6,6 +6,7 @@ import com.remophoto.data.local.dao.ImageDao
 import com.remophoto.data.local.dao.RepositoryDao
 import com.remophoto.data.local.entity.AlbumEntity
 import com.remophoto.data.scanner.FileScanner
+import com.remophoto.util.AppLogger
 import com.remophoto.util.Constants
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -86,6 +87,8 @@ class ScanImagesUseCase(
             albumIdMap[entity.directoryPath] = id
         }
 
+        AppLogger.i(TAG, "相册已插入: ${albumIdMap.size} 个, 映射键示例=[${albumIdMap.keys.take(2).joinToString(" | ")}]")
+
         onProgress(0.48f)
 
         // 2c. 处理图片元数据并写入 DB（用真实 albumIdMap）
@@ -107,7 +110,19 @@ class ScanImagesUseCase(
         // ===== 阶段 3：统计更新 =====
 
         updateAlbumImageCounts()
+        AppLogger.i(TAG, "开始封面选取: 共 ${albumIdMap.size} 个相册")
         albumCoverManager?.autoSelectAllCovers()
+        // 验证封面设置结果
+        for ((dirPath, albumId) in albumIdMap) {
+            val album = albumDao.getAlbumById(albumId)
+            if (album != null) {
+                AppLogger.d(TAG,
+                    "扫描结果验证: albumId=$albumId, dir=\"$dirPath\", " +
+                    "name=\"${album.name}\", imageCount=${album.imageCount}, " +
+                    "coverPath=${album.coverImagePath ?: "null"}"
+                )
+            }
+        }
         repositoryDao.updateScanInfo(repoId, System.currentTimeMillis(), totalImages)
 
         onProgress(1f)
@@ -267,5 +282,9 @@ class ScanImagesUseCase(
                 albumDao.updateImageCount(album.id, count)
             }
         }
+    }
+
+    companion object {
+        private const val TAG = "ScanImages"
     }
 }

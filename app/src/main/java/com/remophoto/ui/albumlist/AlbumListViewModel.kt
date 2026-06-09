@@ -9,6 +9,7 @@ import com.remophoto.domain.model.SortOrder
 import com.remophoto.data.local.entity.AlbumEntity
 import com.remophoto.data.repository.AlbumRepository
 import com.remophoto.data.repository.SettingsRepository
+import com.remophoto.util.AppLogger
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -77,8 +78,18 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
                     _albumTree.value = tree
                     _isEmpty.value = tree.isEmpty()
                     _isLoading.value = false
+                    // 日志：记录每个相册的封面信息
+                    for (album in tree) {
+                        AppLogger.d(TAG,
+                            "相册列表项: name=\"${album.name}\", id=${album.id}, " +
+                            "imageCount=${album.imageCount}, " +
+                            "coverPath=${album.coverImagePath ?: "null"}, " +
+                            "children=${album.children.size}"
+                        )
+                    }
                 }
             } catch (e: Exception) {
+                AppLogger.e(TAG, "加载相册列表失败", e)
                 _isLoading.value = false
             }
         }
@@ -223,7 +234,7 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
     // ===== 工具方法 =====
 
     private fun AlbumEntity.toDomainModel(depth: Int): Album {
-        return Album(
+        val model = Album(
             id = id,
             name = name,
             directoryPath = directoryPath,
@@ -234,5 +245,16 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
             imageCount = imageCount,
             depth = depth
         )
+        // 跟踪封面路径传递
+        if (coverImagePath != null) {
+            AppLogger.d(TAG,
+                "toDomainModel: entity=\"$name\"(id=$id) → coverPath=\"$coverImagePath\""
+            )
+        }
+        return model
+    }
+
+    companion object {
+        private const val TAG = "AlbumList"
     }
 }

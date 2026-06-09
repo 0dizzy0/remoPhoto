@@ -1,7 +1,9 @@
 package com.remophoto
 
 import android.app.Application
+import coil.Coil
 import com.remophoto.di.DependencyContainer
+import com.remophoto.util.AppLogger
 
 /**
  * remoPhoto Application 类
@@ -27,6 +29,13 @@ class RemoPhotoApp : Application() {
         super.onCreate()
         instance = this
         dependencyContainer = DependencyContainer(this)
+
+        // 初始化日志系统
+        AppLogger.init(this)
+
+        // 设置 Coil 全局 ImageLoader（含 GIF 解码器）
+        Coil.setImageLoader(dependencyContainer.imageLoader)
+        AppLogger.i("RemoPhotoApp", "Coil 全局 ImageLoader 已设置（GIF/WebP 动图支持）")
     }
 
     companion object {

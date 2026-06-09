@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.request.ImageRequest
 import com.remophoto.domain.model.ImageItem
+import com.remophoto.util.AppLogger
 
 /**
  * 图片缩略图组件
@@ -48,13 +49,22 @@ fun ImageThumbnail(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            // 记忆化请求：避免 recomposition 导致 Coil 重复加载
+            // 记忆化请求：使用 id+filePath 作为缓存键，避免不同图片共享相同路径的缓存
             val ctx = androidx.compose.ui.platform.LocalContext.current
-            val thumbRequest = remember(image.filePath) {
+            val thumbRequest = remember(image.id, image.filePath) {
                 ImageRequest.Builder(ctx)
                     .data(image.filePath)
                     .crossfade(true)
                     .size(300)
+                    .listener(
+                        onError = { _, result ->
+                            AppLogger.e(TAG,
+                                "缩略图加载失败: id=${image.id}, fileName=${image.fileName}, " +
+                                "path=${image.filePath}, error=${result.throwable?.message}",
+                                result.throwable
+                            )
+                        }
+                    )
                     .build()
             }
 
@@ -77,10 +87,10 @@ fun ImageThumbnail(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.1f)),
+                            .background(Color(0xFF3A1A1A)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("❌", style = MaterialTheme.typography.titleLarge)
+                        Text("⚠️", style = MaterialTheme.typography.titleLarge)
                     }
                 }
             )
@@ -103,3 +113,5 @@ fun ImageThumbnail(
         }
     }
 }
+
+private const val TAG = "Thumbnail"
