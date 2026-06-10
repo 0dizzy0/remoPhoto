@@ -13,10 +13,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.remophoto.domain.model.ImageItem
+import com.remophoto.ui.components.EmptyStateView
 import com.remophoto.ui.components.ImageThumbnail
 import com.remophoto.util.AppLogger
 
@@ -72,17 +75,29 @@ fun GalleryScreen(
                     }
                 },
                 navigationIcon = {
-                    TextButton(onClick = onBack) {
+                    TextButton(onClick = {
+                        AppLogger.i(TAG, "点击返回按钮: 图片网格 → 相册列表")
+                        onBack()
+                    }) {
                         Text("← 返回")
                     }
                 },
                 actions = {
                     // 相册设置
-                    IconButton(onClick = { onAlbumSettingsClick(albumId) }) {
+                    IconButton(
+                        onClick = {
+                            AppLogger.i(TAG, "点击相册设置按钮 (albumId=$albumId)")
+                            onAlbumSettingsClick(albumId)
+                        },
+                        modifier = Modifier.semantics { contentDescription = "相册设置" }
+                    ) {
                         Text("⚙️", modifier = Modifier.padding(4.dp))
                     }
                     // 布局切换
-                    IconButton(onClick = { viewModel.toggleLayoutMode() }) {
+                    IconButton(onClick = {
+                        AppLogger.i(TAG, "点击布局切换按钮 (当前=${if (isGridView) "网格" else "列表"})")
+                        viewModel.toggleLayoutMode()
+                    }) {
                         Icon(
                             imageVector = if (isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
                             contentDescription = if (isGridView) "列表模式" else "网格模式"
@@ -104,25 +119,11 @@ fun GalleryScreen(
                 }
             }
             images.isEmpty() -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "🖼️",
-                            style = MaterialTheme.typography.displayLarge
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = "暂无图片",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
+                EmptyStateView(
+                    icon = "🖼️",
+                    title = "暂无图片",
+                    modifier = Modifier.padding(padding)
+                )
             }
             isGridView -> {
                 LazyVerticalGrid(
@@ -134,15 +135,18 @@ fun GalleryScreen(
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    itemsIndexed(images, key = { _, item -> item.id }) { index, image ->
+                    itemsIndexed(
+                        images,
+                        key = { _, item -> item.id },
+                        contentType = { _, _ -> "image_thumb" }
+                    ) { index, image ->
                         ImageThumbnail(
                             image = image,
                             onClick = {
                                 if (isNavigating) return@ImageThumbnail
                                 isNavigating = true
                                 AppLogger.i(TAG,
-                                    "点击缩略图: albumId=$albumId, index=$index, " +
-                                    "fileName=${image.fileName}"
+                                    "🖼️ 点击缩略图: albumId=$albumId, index=$index, fileName=${image.fileName}"
                                 )
                                 onImageClick(index)
                             }
@@ -158,15 +162,18 @@ fun GalleryScreen(
                     contentPadding = PaddingValues(4.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    itemsIndexed(images, key = { _, item -> item.id }) { index, image ->
+                    itemsIndexed(
+                        images,
+                        key = { _, item -> item.id },
+                        contentType = { _, _ -> "image_list_item" }
+                    ) { index, image ->
                         ImageListItem(
                             image = image,
                             onClick = {
                                 if (isNavigating) return@ImageListItem
                                 isNavigating = true
                                 AppLogger.i(TAG,
-                                    "点击列表项: albumId=$albumId, index=$index, " +
-                                    "fileName=${image.fileName}"
+                                    "🖼️ 点击列表项: albumId=$albumId, index=$index, fileName=${image.fileName}"
                                 )
                                 onImageClick(index)
                             }

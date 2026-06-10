@@ -60,6 +60,18 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * 关闭数据库实例（用于导入前释放文件锁）
+         *
+         * 导入完成后需要重启 App 进程重新初始化 Room。
+         */
+        fun closeInstance() {
+            synchronized(this) {
+                INSTANCE?.close()
+                INSTANCE = null
+            }
+        }
+
         private fun buildDatabase(context: Context): AppDatabase {
             return Room.databaseBuilder(
                 context.applicationContext,

@@ -27,6 +27,8 @@ class SettingsRepository(private val context: Context) {
         private val KEY_SLIDESHOW_INTERVAL = intPreferencesKey("slideshow_interval")
         private val KEY_USE_VOLUME_KEYS = booleanPreferencesKey("use_volume_keys")
         private val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
+        private val KEY_DARK_MODE_TYPE = stringPreferencesKey("dark_mode_type")
+        private val KEY_HIGH_CONTRAST = booleanPreferencesKey("high_contrast")
     }
 
     /** 默认排序方式 */
@@ -54,6 +56,16 @@ class SettingsRepository(private val context: Context) {
         prefs[KEY_THEME_MODE] ?: "system"
     }
 
+    /** 深色背景类型：auto / oled / lcd（仅深色模式时生效） */
+    val darkModeType: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_DARK_MODE_TYPE] ?: "auto"
+    }
+
+    /** 高对比度模式 */
+    val highContrast: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_HIGH_CONTRAST] ?: false
+    }
+
     // ===== 写操作 =====
 
     suspend fun setDefaultSortOrder(order: SortOrder) {
@@ -74,5 +86,13 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setThemeMode(mode: String) {
         context.dataStore.edit { it[KEY_THEME_MODE] = mode }
+    }
+
+    suspend fun setDarkModeType(type: String) {
+        context.dataStore.edit { it[KEY_DARK_MODE_TYPE] = type }
+    }
+
+    suspend fun setHighContrast(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_HIGH_CONTRAST] = enabled }
     }
 }

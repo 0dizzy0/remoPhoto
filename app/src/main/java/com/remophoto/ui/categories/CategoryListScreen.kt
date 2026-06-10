@@ -16,6 +16,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.remophoto.data.local.entity.CategoryEntity
+import com.remophoto.util.AppLogger
 
 /**
  * 分类管理页面
@@ -43,7 +44,10 @@ fun CategoryListScreen(
             TopAppBar(
                 title = { Text("分类管理") },
                 navigationIcon = {
-                    TextButton(onClick = onBack) {
+                    TextButton(onClick = {
+                        AppLogger.i(TAG, "点击返回按钮")
+                        onBack()
+                    }) {
                         Text("← 返回")
                     }
                 }
@@ -285,3 +289,5 @@ private fun CreateCategoryDialog(
         }
     )
 }
+
+private const val TAG = "Categories"

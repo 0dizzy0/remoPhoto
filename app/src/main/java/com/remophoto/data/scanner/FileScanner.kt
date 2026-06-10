@@ -10,7 +10,9 @@ import com.remophoto.data.local.entity.ImageEntity
 import com.remophoto.util.AppLogger
 import com.remophoto.util.Constants
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.coroutineContext
 
 /**
  * 文件系统扫描器
@@ -95,6 +97,9 @@ class FileScanner(val context: Context) {
         var batchCount = 0
 
         for (fileInfo in imageFiles) {
+            // 支持取消：每个文件处理前检查协程是否已取消
+            coroutineContext.ensureActive()
+
             val metadata = extractFullMetadata(fileInfo.uri, fileInfo.fileName)
             if (metadata != null) {
                 // 确定所属相册：按目录路径匹配
@@ -176,6 +181,8 @@ class FileScanner(val context: Context) {
         val batchEntities = mutableListOf<ImageEntity>()
 
         for (fileInfo in imageFiles) {
+            coroutineContext.ensureActive()
+
             val metadata = extractFullMetadata(fileInfo.uri, fileInfo.fileName) ?: continue
 
             // 仅处理修改时间晚于 lastScanTime 的文件
@@ -505,6 +512,8 @@ class FileScanner(val context: Context) {
         onProgress(ScanProgress(0, totalFiles, "正在提取图片索引 (0/$totalFiles)…"))
 
         for (fileInfo in imageFiles) {
+            coroutineContext.ensureActive()
+
             val metadata = extractFullMetadata(fileInfo.uri, fileInfo.fileName)
             if (metadata != null) {
                 val albumId = findAlbumId(fileInfo.parentPath, albumIdMap)

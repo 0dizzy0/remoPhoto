@@ -13,6 +13,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.remophoto.data.repository.RepositoryManager
 import com.remophoto.data.repository.SettingsRepository
 import com.remophoto.ui.navigation.NavGraph
+import com.remophoto.ui.theme.DarkModeType
 import com.remophoto.ui.theme.RemoPhotoTheme
 import com.remophoto.ui.theme.ThemeMode
 import com.remophoto.util.PermissionHelper
@@ -65,7 +66,22 @@ class MainActivity : ComponentActivity() {
                 else -> ThemeMode.SYSTEM
             }
 
-            RemoPhotoTheme(themeMode = themeMode) {
+            // 从设置中读取深色背景类型
+            val darkModeTypeStr by settingsRepository.darkModeType.collectAsState(initial = "auto")
+            val darkModeType = when (darkModeTypeStr) {
+                "oled" -> DarkModeType.OLED
+                "lcd" -> DarkModeType.LCD
+                else -> DarkModeType.AUTO
+            }
+
+            // 从设置中读取高对比度
+            val highContrast by settingsRepository.highContrast.collectAsState(initial = false)
+
+            RemoPhotoTheme(
+                themeMode = themeMode,
+                darkModeType = darkModeType,
+                highContrast = highContrast
+            ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

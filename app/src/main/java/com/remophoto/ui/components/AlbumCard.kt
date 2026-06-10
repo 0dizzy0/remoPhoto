@@ -55,7 +55,7 @@ fun AlbumCard(
                     if (album.coverImagePath != null) {
                         AsyncImage(
                             model = album.coverImagePath,
-                            contentDescription = album.name,
+                            contentDescription = "相册封面：${album.name}",
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop,
                             onSuccess = {
@@ -137,7 +137,7 @@ fun AlbumCard(
                     if (album.coverImagePath != null) {
                         AsyncImage(
                             model = album.coverImagePath,
-                            contentDescription = album.name,
+                            contentDescription = "相册封面：${album.name}",
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop,
                             onSuccess = {

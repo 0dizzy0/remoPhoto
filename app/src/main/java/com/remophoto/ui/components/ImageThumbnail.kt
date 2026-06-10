@@ -59,6 +59,8 @@ fun ImageThumbnail(
                     .data(image.filePath)
                     .crossfade(true)
                     .size(300)
+                    .precision(coil.size.Precision.INEXACT)  // 使用近似精度，更快解码
+                    .memoryCacheKey(image.filePath + "_thumb")  // 精确缓存键
                     .listener(
                         onError = { _, result ->
                             AppLogger.e(TAG,

@@ -33,6 +33,7 @@ import com.remophoto.ui.albumlist.AlbumSettingsScreen
 import com.remophoto.data.repository.RepositoryManager
 import com.remophoto.ui.repository.RepositoryManagerScreen
 import com.remophoto.ui.repository.RepositoryManagerViewModel
+import com.remophoto.util.AppLogger
 import com.remophoto.util.PermissionHelper
 
 // ===== 路由定义 =====
@@ -105,6 +106,11 @@ fun NavGraph(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
+    // 路由变化日志
+    LaunchedEffect(currentRoute) {
+        AppLogger.i(TAG, "当前路由: $currentRoute")
+    }
+
     // 判断是否需要显示底部导航栏（仅主页和设置页显示）
     // AlbumList 路由可能有查询参数，所以用 base route 匹配
     val showBottomBar = currentRoute?.startsWith(Screen.AlbumList.BASE_ROUTE) == true
@@ -118,25 +124,29 @@ fun NavGraph(
             if (showBottomBar) {
                 NavigationBar {
                     NavigationBarItem(
-                        icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = null) },
+                        icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = stringResource(R.string.album_list)) },
                         label = { Text(stringResource(R.string.album_list)) },
                         selected = currentRoute?.startsWith(Screen.AlbumList.BASE_ROUTE) == true,
                         onClick = {
                             if (currentRoute?.startsWith(Screen.AlbumList.BASE_ROUTE) != true) {
+                                AppLogger.i(TAG, "📱 底部Tab点击: 相册列表 (from=$currentRoute)")
                                 navController.navigate(Screen.AlbumList.BASE_ROUTE) {
                                     popUpTo(Screen.AlbumList.BASE_ROUTE) { inclusive = true }
+                                    launchSingleTop = true
                                 }
                             }
                         }
                     )
                     NavigationBarItem(
-                        icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                        icon = { Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings)) },
                         label = { Text(stringResource(R.string.settings)) },
                         selected = currentRoute == Screen.Settings.ROUTE,
                         onClick = {
                             if (currentRoute != Screen.Settings.ROUTE) {
+                                AppLogger.i(TAG, "📱 底部Tab点击: 设置 (from=$currentRoute)")
                                 navController.navigate(Screen.Settings.ROUTE) {
-                                    popUpTo(Screen.AlbumList.ROUTE)
+                                    launchSingleTop = true
+                                    restoreState = true
                                 }
                             }
                         }
@@ -149,6 +159,8 @@ fun NavGraph(
             navController = navController,
             startDestination = Screen.AlbumList.ROUTE,
             modifier = Modifier.padding(innerPadding)
+            // 不在 NavHost 层级设置 slide 动画 — 底部 Tab 切换应为即时切换
+            // 深层导航（相册→网格→全屏）内部使用 AnimatedContent/AnimatedVisibility 提供过渡
         ) {
             // 相册列表页（主页），可选分类筛选
             composable(
@@ -171,18 +183,23 @@ fun NavGraph(
                 AlbumListScreen(
                     viewModel = albumListViewModel,
                     onAlbumClick = { albumId ->
+                        AppLogger.i(TAG, "🧭 导航: 相册列表 → 图片网格 (albumId=$albumId)")
                         navController.navigate(Screen.Gallery.createRoute(albumId))
                     },
                     onSettingsClick = {
+                        AppLogger.i(TAG, "🧭 导航: 相册列表 → 设置 (顶部栏入口)")
                         navController.navigate(Screen.Settings.ROUTE)
                     },
                     onRepositoryManagerClick = {
+                        AppLogger.i(TAG, "🧭 导航: 相册列表 → 仓库管理")
                         navController.navigate(Screen.RepositoryManager.ROUTE)
                     },
                     onCategoriesClick = {
+                        AppLogger.i(TAG, "🧭 导航: 相册列表 → 分类管理")
                         navController.navigate(Screen.Categories.ROUTE)
                     },
                     onAlbumSettingsClick = { albumId ->
+                        AppLogger.i(TAG, "🧭 导航: 相册列表 → 相册设置 (albumId=$albumId)")
                         navController.navigate(Screen.AlbumSettings.createRoute(albumId))
                     },
                     categoryId = categoryId,
@@ -201,10 +218,15 @@ fun NavGraph(
                 GalleryScreen(
                     albumId = albumId,
                     onImageClick = { index ->
+                        AppLogger.i(TAG, "🧭 导航: 图片网格 → 全屏浏览 (albumId=$albumId, index=$index)")
                         navController.navigate(Screen.Viewer.createRoute(albumId, index))
                     },
-                    onBack = { navController.popBackStack() },
+                    onBack = {
+                        AppLogger.i(TAG, "⬅ 返回: 图片网格 → 相册列表")
+                        navController.popBackStack()
+                    },
                     onAlbumSettingsClick = { id ->
+                        AppLogger.i(TAG, "🧭 导航: 图片网格 → 相册设置 (albumId=$id)")
                         navController.navigate(Screen.AlbumSettings.createRoute(id))
                     }
                 )
@@ -223,14 +245,20 @@ fun NavGraph(
                 FullScreenViewer(
                     albumId = albumId,
                     imageIndex = imageIndex,
-                    onBack = { navController.popBackStack() }
+                    onBack = {
+                        AppLogger.i(TAG, "⬅ 返回: 全屏浏览 → 图片网格")
+                        navController.popBackStack()
+                    }
                 )
             }
 
             // 设置页
             composable(Screen.Settings.ROUTE) {
                 SettingsScreen(
-                    onBack = { navController.popBackStack() }
+                    onBack = {
+                        AppLogger.i(TAG, "⬅ 返回: 设置 → 上一页")
+                        navController.popBackStack()
+                    }
                 )
             }
 
@@ -245,9 +273,13 @@ fun NavGraph(
                 }
                 RepositoryManagerScreen(
                     viewModel = repoViewModel,
-                    onBack = { navController.popBackStack() },
+                    onBack = {
+                        AppLogger.i(TAG, "⬅ 返回: 仓库管理 → 相册列表")
+                        navController.popBackStack()
+                    },
                     onScanComplete = {
                         // 扫描完成后刷新相册列表
+                        AppLogger.i(TAG, "🔄 扫描完成 → 刷新相册列表")
                         albumListViewModel.refresh()
                     }
                 )
@@ -256,8 +288,12 @@ fun NavGraph(
             // 分类管理页
             composable(Screen.Categories.ROUTE) {
                 CategoryListScreen(
-                    onBack = { navController.popBackStack() },
+                    onBack = {
+                        AppLogger.i(TAG, "⬅ 返回: 分类管理 → 相册列表")
+                        navController.popBackStack()
+                    },
                     onCategoryClick = { categoryId, categoryName ->
+                        AppLogger.i(TAG, "🧭 导航: 分类管理 → 相册列表(筛选) (categoryId=$categoryId, name=$categoryName)")
                         // 点击分类：回到相册列表并按分类筛选
                         navController.navigate(
                             Screen.AlbumList.createRoute(categoryId, categoryName)
@@ -278,7 +314,10 @@ fun NavGraph(
                 val albumId = backStackEntry.arguments?.getLong("albumId") ?: 0L
                 AlbumSettingsScreen(
                     albumId = albumId,
-                    onBack = { navController.popBackStack() }
+                    onBack = {
+                        AppLogger.i(TAG, "⬅ 返回: 相册设置 → 上一页")
+                        navController.popBackStack()
+                    }
                 )
             }
         }
@@ -293,6 +332,8 @@ fun NavGraph(
  * 在中心显示标题和副标题，作为各页面的初始占位实现。
  * 后续 Phase 中将替换为具体的功能页面。
  */
+private const val TAG = "NavGraph"
+
 @Composable
 fun PlaceholderScreen(title: String, subtitle: String) {
     Box(

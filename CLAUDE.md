@@ -15,7 +15,7 @@
 | 项目 | 详情 |
 |------|------|
 | 包名 | `com.remophoto` |
-| 当前阶段 | Phase 0 ✅ → Phase 1 ✅ → Phase 2 ✅ → Phase 3 待开始 |
+| 当前阶段 | Phase 0 ✅ → Phase 1 ✅ → Phase 2 ✅ → Phase 3 ✅ → Phase 4 待开始 |
 | minSdk / targetSdk | 29 / 35 |
 | 架构 | MVVM + Repository，手动 DI（`DependencyContainer`） |
 | 数据库 | Room 2.6.1 + KSP，7 张表 |
@@ -47,5 +47,20 @@
 
 **新增文件:** CategoryManager, CategoryListScreen, CategoryViewModel, AlbumSettingsScreen, AlbumSettingsViewModel, file_paths.xml
 **新增路由:** `categories`, `album_settings/{albumId}`, `album_list?categoryId=&categoryName=`
-**遗留 Phase 3:** 相册快速滚动条、大型仓库扫描优化、导入/导出数据库
+
+### Phase 3 完成情况（2026-06-10）✅
+
+**P3-01 Material 3 排版系统:** Type.kt 完整 M3 Typography（display/headline/title/body/label），Color.kt 完整色槽（primary/secondary/tertiary/error + container 变体 + outline/inverse）
+**P3-02 OLED 深色背景:** DarkModeType 枚举（AUTO/OLED/LCD），SettingsRepository 增加 darkModeType + highContrast 设置项，SettingsScreen 增加深色背景类型选择器
+**P3-03 动画过渡:** NavGraph 页面转场 slide+fade（tween 300ms），AlbumListScreen AnimatedContent 子相册展开动画（expandVertically + fadeIn）
+**P3-04 列表性能:** LazyColumn/LazyGrid 添加 contentType 提高复用效率，相册 > 20 时显示快速滚动条指示器（ScrollPositionIndicator）
+**P3-05 图片加载:** ImageThumbnail INEXACT 精度解码，memoryCacheKey 优化缓存命中，ImageLoader 显式 CachePolicy.ENABLED
+**P3-06 空错状态:** 新建 EmptyStateView（通用空状态组件）和 ErrorStateView（错误重试组件），替换 AlbumListScreen 和 GalleryScreen 内联空状态
+**P3-07 启动屏:** SplashScreen 背景色改为纯黑 #000000
+**P3-08 辅助功能:** 所有 IconButton/Text emoji 按钮添加 contentDescription/semantics，AlbumCard 封面 contentDescription 改为"相册封面：${name}"
+**遗留项:** FileScanner 添加 coroutineContext.ensureActive() 取消支持；DatabaseExporter 完整导入/导出（ZIP+SAF+备份回滚）；SettingsScreen SAF launcher 集成
+
+**新增文件:** Type.kt, EmptyStateView.kt, ErrorStateView.kt, DatabaseExporter.kt
+**修改文件:** Theme.kt, Color.kt, SettingsRepository.kt, SettingsScreen.kt, SettingsViewModel.kt, MainActivity.kt, NavGraph.kt, AlbumListScreen.kt, GalleryScreen.kt, ImageLoader.kt, ImageThumbnail.kt, FileScanner.kt, AlbumCard.kt, colors.xml
+**遗留 Phase 4:** 远程仓库（SMB+HTTP+mDNS）、视频播放、多用户权限管理
 

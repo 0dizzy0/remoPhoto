@@ -1,6 +1,9 @@
 package com.remophoto.ui.settings
 
 import android.app.Application
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.remophoto.RemoPhotoApp
@@ -41,12 +44,22 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _useVolumeKeys = MutableStateFlow(true)
     val useVolumeKeys: StateFlow<Boolean> = _useVolumeKeys.asStateFlow()
 
+    private val _darkModeType = MutableStateFlow("auto")
+    val darkModeType: StateFlow<String> = _darkModeType.asStateFlow()
+
+    private val _highContrast = MutableStateFlow(false)
+    val highContrast: StateFlow<Boolean> = _highContrast.asStateFlow()
+
     // 存储空间
     private val _totalImageCount = MutableStateFlow(0)
     val totalImageCount: StateFlow<Int> = _totalImageCount.asStateFlow()
 
     private val _totalStorageSize = MutableStateFlow(0L)
     val totalStorageSize: StateFlow<Long> = _totalStorageSize.asStateFlow()
+
+    // 导入/导出对话框
+    var showExportDialog by mutableStateOf(false)
+    var showImportDialog by mutableStateOf(false)
 
     // ===== 初始化：从 DataStore 加载 =====
 
@@ -65,6 +78,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
         viewModelScope.launch {
             settingsRepository.useVolumeKeys.collect { _useVolumeKeys.value = it }
+        }
+        viewModelScope.launch {
+            settingsRepository.darkModeType.collect { _darkModeType.value = it }
+        }
+        viewModelScope.launch {
+            settingsRepository.highContrast.collect { _highContrast.value = it }
         }
 
         AppLogger.i(TAG, "SettingsViewModel 初始化完成")
@@ -121,6 +140,48 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             settingsRepository.setUseVolumeKeys(enabled)
             AppLogger.i(TAG, "音量键翻页已更新: $enabled")
+        }
+    }
+
+    fun setDarkModeType(type: String) {
+        _darkModeType.value = type
+        viewModelScope.launch {
+            settingsRepository.setDarkModeType(type)
+            AppLogger.i(TAG, "深色背景类型已更新: $type")
+        }
+    }
+
+    fun setHighContrast(enabled: Boolean) {
+        _highContrast.value = enabled
+        viewModelScope.launch {
+            settingsRepository.setHighContrast(enabled)
+            AppLogger.i(TAG, "高对比度已更新: $enabled")
+        }
+    }
+
+    // ===== 导入/导出 =====
+
+    fun exportDatabase(context: android.content.Context, destUri: android.net.Uri) {
+        viewModelScope.launch {
+            AppLogger.i(TAG, "开始导出数据库到: $destUri")
+            val success = com.remophoto.data.repository.DatabaseExporter.exportDatabase(context, destUri)
+            if (success) {
+                AppLogger.i(TAG, "数据库导出成功")
+            } else {
+                AppLogger.e(TAG, "数据库导出失败")
+            }
+        }
+    }
+
+    fun importDatabase(context: android.content.Context, sourceUri: android.net.Uri) {
+        viewModelScope.launch {
+            AppLogger.i(TAG, "开始从 $sourceUri 导入数据库")
+            val success = com.remophoto.data.repository.DatabaseExporter.importDatabase(context, sourceUri)
+            if (success) {
+                AppLogger.i(TAG, "数据库导入成功，建议重启应用")
+            } else {
+                AppLogger.e(TAG, "数据库导入失败")
+            }
         }
     }
 

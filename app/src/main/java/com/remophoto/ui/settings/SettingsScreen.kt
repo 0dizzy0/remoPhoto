@@ -1,5 +1,8 @@
 package com.remophoto.ui.settings
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -8,9 +11,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.remophoto.domain.model.SortOrder
+import com.remophoto.util.AppLogger
 
 /**
  * 设置页面
@@ -28,7 +33,29 @@ fun SettingsScreen(
     onBack: () -> Unit = {},
     viewModel: SettingsViewModel = viewModel()
 ) {
+    val context = LocalContext.current
+
+    // SAF 导出文件选择器
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.exportDatabase(context, uri)
+        }
+    }
+
+    // SAF 导入文件选择器
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.importDatabase(context, uri)
+        }
+    }
+
     val themeMode by viewModel.themeMode.collectAsState()
+    val darkModeType by viewModel.darkModeType.collectAsState()
+    val highContrast by viewModel.highContrast.collectAsState()
     val sortOrder by viewModel.defaultSortOrder.collectAsState()
     val albumsPerPage by viewModel.albumsPerPage.collectAsState()
     val slideshowInterval by viewModel.slideshowInterval.collectAsState()
@@ -38,17 +65,20 @@ fun SettingsScreen(
 
     // 各下拉菜单展开状态
     var showThemeMenu by remember { mutableStateOf(false) }
+    var showDarkModeTypeMenu by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showIntervalMenu by remember { mutableStateOf(false) }
     var showPageCountMenu by remember { mutableStateOf(false) }
-    var showPageInputDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("设置") },
                 navigationIcon = {
-                    TextButton(onClick = onBack) {
+                    TextButton(onClick = {
+                        AppLogger.i(TAG, "点击返回按钮")
+                        onBack()
+                    }) {
                         Text("← 返回")
                     }
                 }
@@ -79,17 +109,54 @@ fun SettingsScreen(
             ) {
                 DropdownMenuItem(
                     text = { Text("☀️ 浅色") },
-                    onClick = { viewModel.setThemeMode("light"); showThemeMenu = false }
+                    onClick = { AppLogger.i(TAG, "设置主题: light"); viewModel.setThemeMode("light"); showThemeMenu = false }
                 )
                 DropdownMenuItem(
                     text = { Text("🌙 深色") },
-                    onClick = { viewModel.setThemeMode("dark"); showThemeMenu = false }
+                    onClick = { AppLogger.i(TAG, "设置主题: dark"); viewModel.setThemeMode("dark"); showThemeMenu = false }
                 )
                 DropdownMenuItem(
                     text = { Text("📱 跟随系统") },
-                    onClick = { viewModel.setThemeMode("system"); showThemeMenu = false }
+                    onClick = { AppLogger.i(TAG, "设置主题: system"); viewModel.setThemeMode("system"); showThemeMenu = false }
                 )
             }
+
+            // 深色背景类型（仅在深色或跟随系统时可见）
+            if (themeMode != "light") {
+                Box {
+                    SettingsRow(
+                        label = "深色背景类型",
+                        value = darkModeTypeDisplayName(darkModeType)
+                    ) {
+                        showDarkModeTypeMenu = true
+                    }
+                    DropdownMenu(
+                        expanded = showDarkModeTypeMenu,
+                        onDismissRequest = { showDarkModeTypeMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("🔍 自动检测") },
+                            onClick = { AppLogger.i(TAG, "设置深色背景: auto"); viewModel.setDarkModeType("auto"); showDarkModeTypeMenu = false }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("⬛ 纯黑 (OLED)") },
+                            onClick = { AppLogger.i(TAG, "设置深色背景: oled"); viewModel.setDarkModeType("oled"); showDarkModeTypeMenu = false }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("◼️ 深灰 (LCD)") },
+                            onClick = { AppLogger.i(TAG, "设置深色背景: lcd"); viewModel.setDarkModeType("lcd"); showDarkModeTypeMenu = false }
+                        )
+                    }
+                }
+            }
+
+            // 高对比度
+            SettingsSwitchRow(
+                label = "高对比度",
+                description = "提高文字与背景的对比度",
+                checked = highContrast,
+                onCheckedChange = { AppLogger.i(TAG, "切换高对比度: $it"); viewModel.setHighContrast(it) }
+            )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
@@ -111,7 +178,7 @@ fun SettingsScreen(
                     SortOrder.entries.forEach { order ->
                         DropdownMenuItem(
                             text = { Text(order.displayName) },
-                            onClick = { viewModel.setDefaultSortOrder(order); showSortMenu = false }
+                            onClick = { AppLogger.i(TAG, "设置排序: ${order.name}"); viewModel.setDefaultSortOrder(order); showSortMenu = false }
                         )
                     }
                 }
@@ -132,7 +199,7 @@ fun SettingsScreen(
                     listOf(5, 10, 20, 30, 50, 100).forEach { count ->
                         DropdownMenuItem(
                             text = { Text("$count 个") },
-                            onClick = { viewModel.setAlbumsPerPage(count); showPageCountMenu = false }
+                            onClick = { AppLogger.i(TAG, "设置每页数量: $count"); viewModel.setAlbumsPerPage(count); showPageCountMenu = false }
                         )
                     }
                 }
@@ -158,7 +225,7 @@ fun SettingsScreen(
                     listOf(1, 3, 5, 10, 30, 60).forEach { sec ->
                         DropdownMenuItem(
                             text = { Text("${sec}s") },
-                            onClick = { viewModel.setSlideshowInterval(sec); showIntervalMenu = false }
+                            onClick = { AppLogger.i(TAG, "设置播放间隔: ${sec}s"); viewModel.setSlideshowInterval(sec); showIntervalMenu = false }
                         )
                     }
                 }
@@ -169,7 +236,7 @@ fun SettingsScreen(
                 label = "音量键翻页",
                 description = "全屏时音量+上一张/音量-下一张",
                 checked = useVolumeKeys,
-                onCheckedChange = { viewModel.setUseVolumeKeys(it) }
+                onCheckedChange = { AppLogger.i(TAG, "切换音量键翻页: $it"); viewModel.setUseVolumeKeys(it) }
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
@@ -186,6 +253,71 @@ fun SettingsScreen(
                 label = "占用空间",
                 value = formatFileSize(totalStorageSize)
             )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 导入/导出数据库
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { AppLogger.i(TAG, "点击导出数据库按钮"); viewModel.showExportDialog = true },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("📤 导出数据库")
+                }
+                OutlinedButton(
+                    onClick = { AppLogger.i(TAG, "点击导入数据库按钮"); viewModel.showImportDialog = true },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("📥 导入数据库")
+                }
+            }
+
+            // 导出确认对话框
+            if (viewModel.showExportDialog) {
+                AlertDialog(
+                    onDismissRequest = { viewModel.showExportDialog = false },
+                    title = { Text("导出数据库") },
+                    text = { Text("将相册索引和设置导出为备份文件。\n图片文件本身不会被导出。") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            viewModel.showExportDialog = false
+                            exportLauncher.launch("remophoto_backup_${System.currentTimeMillis()}.zip")
+                        }) {
+                            Text("导出")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { viewModel.showExportDialog = false }) {
+                            Text("取消")
+                        }
+                    }
+                )
+            }
+
+            // 导入确认对话框
+            if (viewModel.showImportDialog) {
+                AlertDialog(
+                    onDismissRequest = { viewModel.showImportDialog = false },
+                    title = { Text("导入数据库") },
+                    text = { Text("从备份文件恢复相册索引和设置。\n⚠️ 导入将覆盖当前数据库，建议先导出备份。") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            viewModel.showImportDialog = false
+                            importLauncher.launch(arrayOf("application/zip", "*/*"))
+                        }) {
+                            Text("选择文件")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { viewModel.showImportDialog = false }) {
+                            Text("取消")
+                        }
+                    }
+                )
+            }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
@@ -308,6 +440,14 @@ private fun themeModeDisplayName(mode: String): String = when (mode) {
     "light" -> "☀️ 浅色"
     "dark" -> "🌙 深色"
     else -> "📱 跟随系统"
+}
+
+private const val TAG = "Settings"
+
+private fun darkModeTypeDisplayName(type: String): String = when (type) {
+    "oled" -> "⬛ 纯黑 (OLED)"
+    "lcd" -> "◼️ 深灰 (LCD)"
+    else -> "🔍 自动检测"
 }
 
 private fun formatFileSize(bytes: Long): String {

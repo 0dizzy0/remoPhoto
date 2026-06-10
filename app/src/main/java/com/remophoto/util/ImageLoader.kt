@@ -6,7 +6,7 @@ import coil.decode.GifDecoder
 import coil.decode.ImageDecoderDecoder
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
-import coil.util.DebugLogger
+import coil.request.CachePolicy
 
 /**
  * Coil 图片加载器工厂
@@ -22,13 +22,13 @@ object ImageLoaderFactory {
      */
     fun create(context: Context): ImageLoader {
         return ImageLoader.Builder(context)
-            // 内存缓存（LRU）
+            // 内存缓存（LRU），128MB
             .memoryCache {
                 MemoryCache.Builder(context)
                     .maxSizeBytes(Constants.MEMORY_CACHE_SIZE)
                     .build()
             }
-            // 磁盘缓存（缩略图）
+            // 磁盘缓存（缩略图 + 原图），200MB
             .diskCache {
                 DiskCache.Builder()
                     .directory(context.cacheDir.resolve("image_cache"))
@@ -43,10 +43,12 @@ object ImageLoaderFactory {
                     add(ImageDecoderDecoder.Factory())
                 }
             }
-            // 跨 fade 动画
+            // 跨 fade 动画（300ms）
             .crossfade(300)
-            // 调试日志（Release 时移除）
-            // .logger(DebugLogger())
+            // 默认启用磁盘缓存
+            .diskCachePolicy(CachePolicy.ENABLED)
+            // 内存缓存策略
+            .memoryCachePolicy(CachePolicy.ENABLED)
             .build()
     }
 
@@ -70,6 +72,8 @@ object ImageLoaderFactory {
             }
             // 不添加 GIF/ImageDecoder 解码器 ← 关键：缩略图不播放动图
             .crossfade(200)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .memoryCachePolicy(CachePolicy.ENABLED)
             .build()
     }
 }
