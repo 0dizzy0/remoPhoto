@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
@@ -32,8 +33,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import com.remophoto.data.local.entity.CategoryEntity
 import com.remophoto.domain.model.Album
 import com.remophoto.ui.components.AlbumCard
 import com.remophoto.ui.components.EmptyStateView
@@ -69,6 +72,14 @@ fun AlbumListScreen(
     val currentPage by viewModel.currentPage.collectAsState()
     val activeFilterCategoryName by viewModel.filterCategoryName.collectAsState()
 
+    // 多选状态
+    val selectionMode by viewModel.selectionMode.collectAsState()
+    val selectedAlbumIds by viewModel.selectedAlbumIds.collectAsState()
+    val allCategories by viewModel.allCategories.collectAsState()
+
+    // 分类选择器弹窗
+    var showCategoryPicker by remember { mutableStateOf(false) }
+
     // 外部传入的分类筛选参数
     LaunchedEffect(categoryId) {
         if (categoryId != null && categoryName != null) {
@@ -85,83 +96,110 @@ fun AlbumListScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text = browsingAlbumName ?: activeFilterCategoryName ?: "remoPhoto"
-                        )
-                        if (activeFilterCategoryName != null) {
+            if (selectionMode) {
+                // 多选模式 TopBar
+                TopAppBar(
+                    title = { Text("已选 ${selectedAlbumIds.size} 项") },
+                    navigationIcon = {
+                        TextButton(onClick = {
+                            AppLogger.i(TAG, "点击取消: 退出多选模式")
+                            viewModel.exitSelectionMode()
+                        }) {
+                            Text("取消")
+                        }
+                    },
+                    actions = {
+                        if (selectedAlbumIds.isNotEmpty()) {
+                            TextButton(onClick = {
+                                AppLogger.i(TAG, "点击添加到分类: 已选=${selectedAlbumIds.size}项")
+                                viewModel.loadAllCategories()
+                                showCategoryPicker = true
+                            }) {
+                                Text("添加到分类")
+                            }
+                        }
+                    }
+                )
+            } else {
+                // 正常模式 TopBar
+                TopAppBar(
+                    title = {
+                        Column {
                             Text(
-                                text = "筛选: $activeFilterCategoryName",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                text = browsingAlbumName ?: activeFilterCategoryName ?: "remoPhoto"
+                            )
+                            if (activeFilterCategoryName != null) {
+                                Text(
+                                    text = "筛选: $activeFilterCategoryName",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    },
+                    navigationIcon = {
+                        if (activeFilterCategoryName != null && browsingAlbumId == null) {
+                            // 分类筛选模式：显示关闭筛选按钮
+                            TextButton(onClick = {
+                                AppLogger.i(TAG, "点击清除筛选按钮")
+                                viewModel.clearCategoryFilter()
+                            }) {
+                                Text("✕ 清除筛选")
+                            }
+                        } else if (browsingAlbumId != null) {
+                            TextButton(onClick = {
+                                AppLogger.i(TAG, "点击返回按钮: 子相册 → 父相册")
+                                browsingAlbumId = null
+                                browsingAlbumName = null
+                            }) {
+                                Text("← 返回")
+                            }
+                        }
+                    },
+                    actions = {
+                        // 布局切换按钮
+                        IconButton(onClick = {
+                            AppLogger.i(TAG, "点击布局切换 (当前=${if (isGridView) "网格" else "列表"})")
+                            viewModel.toggleLayoutMode()
+                        }) {
+                            Icon(
+                                imageVector = if (isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
+                                contentDescription = if (isGridView) "列表模式" else "网格模式"
                             )
                         }
-                    }
-                },
-                navigationIcon = {
-                    if (activeFilterCategoryName != null && browsingAlbumId == null) {
-                        // 分类筛选模式：显示关闭筛选按钮
-                        TextButton(onClick = {
-                            AppLogger.i(TAG, "点击清除筛选按钮")
-                            viewModel.clearCategoryFilter()
-                        }) {
-                            Text("✕ 清除筛选")
+                        // 分类管理入口
+                        IconButton(
+                            onClick = {
+                                AppLogger.i(TAG, "点击分类管理按钮")
+                                onCategoriesClick()
+                            },
+                            modifier = Modifier.semantics { contentDescription = "分类管理" }
+                        ) {
+                            Text("🏷️", modifier = Modifier.padding(4.dp))
                         }
-                    } else if (browsingAlbumId != null) {
-                        TextButton(onClick = {
-                            AppLogger.i(TAG, "点击返回按钮: 子相册 → 父相册")
-                            browsingAlbumId = null
-                            browsingAlbumName = null
-                        }) {
-                            Text("← 返回")
+                        // 仓库管理入口
+                        IconButton(
+                            onClick = {
+                                AppLogger.i(TAG, "点击仓库管理按钮")
+                                onRepositoryManagerClick()
+                            },
+                            modifier = Modifier.semantics { contentDescription = "仓库管理" }
+                        ) {
+                            Text("📁", modifier = Modifier.padding(4.dp))
+                        }
+                        // 设置入口
+                        IconButton(
+                            onClick = {
+                                AppLogger.i(TAG, "点击设置按钮 (顶部栏入口)")
+                                onSettingsClick()
+                            },
+                            modifier = Modifier.semantics { contentDescription = "设置" }
+                        ) {
+                            Text("⚙️", modifier = Modifier.padding(4.dp))
                         }
                     }
-                },
-                actions = {
-                    // 布局切换按钮
-                    IconButton(onClick = {
-                        AppLogger.i(TAG, "点击布局切换 (当前=${if (isGridView) "网格" else "列表"})")
-                        viewModel.toggleLayoutMode()
-                    }) {
-                        Icon(
-                            imageVector = if (isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
-                            contentDescription = if (isGridView) "列表模式" else "网格模式"
-                        )
-                    }
-                    // 分类管理入口
-                    IconButton(
-                        onClick = {
-                            AppLogger.i(TAG, "点击分类管理按钮")
-                            onCategoriesClick()
-                        },
-                        modifier = Modifier.semantics { contentDescription = "分类管理" }
-                    ) {
-                        Text("🏷️", modifier = Modifier.padding(4.dp))
-                    }
-                    // 仓库管理入口
-                    IconButton(
-                        onClick = {
-                            AppLogger.i(TAG, "点击仓库管理按钮")
-                            onRepositoryManagerClick()
-                        },
-                        modifier = Modifier.semantics { contentDescription = "仓库管理" }
-                    ) {
-                        Text("📁", modifier = Modifier.padding(4.dp))
-                    }
-                    // 设置入口
-                    IconButton(
-                        onClick = {
-                            AppLogger.i(TAG, "点击设置按钮 (顶部栏入口)")
-                            onSettingsClick()
-                        },
-                        modifier = Modifier.semantics { contentDescription = "设置" }
-                    ) {
-                        Text("⚙️", modifier = Modifier.padding(4.dp))
-                    }
-                }
-            )
+                )
+            }
         },
         bottomBar = {
             val totalPages = viewModel.totalPages()
@@ -186,14 +224,25 @@ fun AlbumListScreen(
                 }
             }
             isEmpty -> {
-                EmptyStateView(
-                    icon = "📷",
-                    title = "暂无相册",
-                    subtitle = "请先添加图片仓库",
-                    actionLabel = "添加仓库",
-                    onAction = onRepositoryManagerClick,
-                    modifier = Modifier.padding(padding)
-                )
+                if (activeFilterCategoryName != null) {
+                    // 分类筛选结果为空
+                    EmptyStateView(
+                        icon = "🏷️",
+                        title = "暂无相册",
+                        subtitle = "请在主界面添加相册至此分类",
+                        modifier = Modifier.padding(padding)
+                    )
+                } else {
+                    // 全局无相册
+                    EmptyStateView(
+                        icon = "📷",
+                        title = "暂无相册",
+                        subtitle = "请先添加图片仓库",
+                        actionLabel = "添加仓库",
+                        onAction = onRepositoryManagerClick,
+                        modifier = Modifier.padding(padding)
+                    )
+                }
             }
             else -> {
                 // 当前浏览层级：根级相册或子相册
@@ -244,15 +293,22 @@ fun AlbumListScreen(
                                 AlbumCard(
                                     album = album,
                                     compact = true,
+                                    selected = album.id in selectedAlbumIds,
+                                    selectionMode = selectionMode,
                                     onClick = {
-                                        AppLogger.i(TAG, "点击相册卡片(网格): id=${album.id}, name=${album.name}, children=${album.children.size}")
-                                        if (album.children.isNotEmpty()) {
-                                            browsingAlbumId = album.id
-                                            browsingAlbumName = album.name
+                                        if (selectionMode) {
+                                            viewModel.toggleSelection(album.id)
                                         } else {
-                                            onAlbumClick(album.id)
+                                            AppLogger.i(TAG, "点击相册卡片(网格): id=${album.id}, name=${album.name}, children=${album.children.size}")
+                                            if (album.children.isNotEmpty()) {
+                                                browsingAlbumId = album.id
+                                                browsingAlbumName = album.name
+                                            } else {
+                                                onAlbumClick(album.id)
+                                            }
                                         }
-                                    }
+                                    },
+                                    onLongClick = { viewModel.enterSelectionMode(album.id) }
                                 )
                             }
                         }
@@ -274,15 +330,22 @@ fun AlbumListScreen(
                                     AlbumCard(
                                         album = album,
                                         compact = false,
+                                        selected = album.id in selectedAlbumIds,
+                                        selectionMode = selectionMode,
                                         onClick = {
-                                            AppLogger.i(TAG, "点击相册卡片(列表): id=${album.id}, name=${album.name}, children=${album.children.size}")
-                                            if (album.children.isNotEmpty()) {
-                                                browsingAlbumId = album.id
-                                                browsingAlbumName = album.name
+                                            if (selectionMode) {
+                                                viewModel.toggleSelection(album.id)
                                             } else {
-                                                onAlbumClick(album.id)
+                                                AppLogger.i(TAG, "点击相册卡片(列表): id=${album.id}, name=${album.name}, children=${album.children.size}")
+                                                if (album.children.isNotEmpty()) {
+                                                    browsingAlbumId = album.id
+                                                    browsingAlbumName = album.name
+                                                } else {
+                                                    onAlbumClick(album.id)
+                                                }
                                             }
-                                        }
+                                        },
+                                        onLongClick = { viewModel.enterSelectionMode(album.id) }
                                     )
                                 }
                             }
@@ -305,6 +368,58 @@ fun AlbumListScreen(
                 }
             }
         }
+    }
+
+    // 分类选择器弹窗
+    if (showCategoryPicker) {
+        AlertDialog(
+            onDismissRequest = { showCategoryPicker = false },
+            title = { Text("选择分类") },
+            text = {
+                if (allCategories.isEmpty()) {
+                    Text(
+                        text = "暂无分类，请先在分类管理中创建",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    LazyColumn {
+                        items(allCategories, key = { it.id }) { category ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        AppLogger.i(TAG, "分类选择器: 选择分类 id=${category.id}, name=${category.name}")
+                                        viewModel.addSelectedToCategory(category.id)
+                                        showCategoryPicker = false
+                                    }
+                                    .padding(vertical = 10.dp, horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // 颜色圆点
+                                Box(
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(category.color))
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = category.name,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showCategoryPicker = false }) {
+                    Text("取消")
+                }
+            }
+        )
     }
 }
 

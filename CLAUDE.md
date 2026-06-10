@@ -64,3 +64,37 @@
 **修改文件:** Theme.kt, Color.kt, SettingsRepository.kt, SettingsScreen.kt, SettingsViewModel.kt, MainActivity.kt, NavGraph.kt, AlbumListScreen.kt, GalleryScreen.kt, ImageLoader.kt, ImageThumbnail.kt, FileScanner.kt, AlbumCard.kt, colors.xml
 **遗留 Phase 4:** 远程仓库（SMB+HTTP+mDNS）、视频播放、多用户权限管理
 
+### Phase 3 迭代 — UI 增强 + 交互优化（2026-06-10）
+
+**UI 调整 (P3-F05):**
+- 双列网格模式移除蓝色封面文件名（调试信息不应展示）
+- 相册名称 `maxLines` 1→2（单双列模式均扩展）
+- 清理已无引用的 `extractFileName()` 函数
+
+**分类筛选空状态区分 (P3-F06):**
+- 全局无相册：「请先添加图片仓库」+「添加仓库」按钮
+- 分类筛选为空：「暂无相册，请在主界面添加相册至此分类」（无操作按钮）
+- 通过 `activeFilterCategoryName != null` 判断场景
+
+**ViewModel 协程竞态修复 (P3-F07):**
+- `loadAlbums()` 和 `loadAlbumsByCategory()` 的 `collect` 协程竞态导致筛选数据覆盖全量数据
+- 修复：新增 `loadJob: Job?`，启动新加载前 `loadJob?.cancel()`
+
+**长按多选 + 批量添加分类 (P3-F08):**
+- AlbumCard 新增 `selected`/`selectionMode`/`onLongClick` 参数，`Card(onClick)` → `Modifier.combinedClickable`
+- 多选模式下 Checkbox 叠加层 + primary 色边框
+- AlbumListViewModel 新增 `selectionMode`/`selectedAlbumIds`/`allCategories` StateFlow
+- 新增 `enterSelectionMode`/`exitSelectionMode`/`toggleSelection`/`loadAllCategories`/`addSelectedToCategory` 方法
+- AlbumListScreen 多选模式 TopBar（已选X项 + 取消 + 添加到分类）
+- 分类选择器 AlertDialog（LazyColumn + 颜色圆点 + 批量关联）
+
+**缩略图可拖动快速滚动条 (P3-F09):**
+- 新建 `DraggableScrollbar` 通用组件（24dp 触摸区，8dp 视觉轨道）
+- `detectVerticalDragGestures` 支持拖拽快速定位
+- `BoxWithConstraints` + `offset` 实现滑块实时跟随手指
+- 颜色适配主题（`outline`/`primary`），自动隐藏（1.5s 淡出）
+- GalleryScreen 网格/列表模式均集成（图片数 > 20 时显示）
+
+**新增文件:** DraggableScrollbar.kt
+**修改文件:** AlbumCard.kt, AlbumListScreen.kt, AlbumListViewModel.kt, GalleryScreen.kt
+**修复 Bug:** P3-F05~F09

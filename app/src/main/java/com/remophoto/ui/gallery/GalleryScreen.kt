@@ -18,7 +18,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import com.remophoto.domain.model.ImageItem
+import com.remophoto.ui.components.DraggableScrollbar
 import com.remophoto.ui.components.EmptyStateView
 import com.remophoto.ui.components.ImageThumbnail
 import com.remophoto.util.AppLogger
@@ -126,57 +129,82 @@ fun GalleryScreen(
                 )
             }
             isGridView -> {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentPadding = PaddingValues(4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    itemsIndexed(
-                        images,
-                        key = { _, item -> item.id },
-                        contentType = { _, _ -> "image_thumb" }
-                    ) { index, image ->
-                        ImageThumbnail(
-                            image = image,
-                            onClick = {
-                                if (isNavigating) return@ImageThumbnail
-                                isNavigating = true
-                                AppLogger.i(TAG,
-                                    "🖼️ 点击缩略图: albumId=$albumId, index=$index, fileName=${image.fileName}"
-                                )
-                                onImageClick(index)
-                            }
+                val gridState = rememberLazyGridState()
+                Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+                    LazyVerticalGrid(
+                        state = gridState,
+                        columns = GridCells.Fixed(2),
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        itemsIndexed(
+                            images,
+                            key = { _, item -> item.id },
+                            contentType = { _, _ -> "image_thumb" }
+                        ) { index, image ->
+                            ImageThumbnail(
+                                image = image,
+                                onClick = {
+                                    if (isNavigating) return@ImageThumbnail
+                                    isNavigating = true
+                                    AppLogger.i(TAG,
+                                        "🖼️ 点击缩略图: albumId=$albumId, index=$index, fileName=${image.fileName}"
+                                    )
+                                    onImageClick(index)
+                                }
+                            )
+                        }
+                    }
+                    // 可拖动滚动条（图片数 > 20 时显示）
+                    if (images.size > 20) {
+                        val columns = 2
+                        DraggableScrollbar(
+                            totalRows = (images.size + columns - 1) / columns,
+                            currentRow = gridState.firstVisibleItemIndex / columns,
+                            isScrollInProgress = gridState.isScrollInProgress,
+                            onScrollToRow = { row -> gridState.scrollToItem(row * columns) },
+                            modifier = Modifier.align(Alignment.CenterEnd)
                         )
                     }
                 }
             }
             else -> {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentPadding = PaddingValues(4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    itemsIndexed(
-                        images,
-                        key = { _, item -> item.id },
-                        contentType = { _, _ -> "image_list_item" }
-                    ) { index, image ->
-                        ImageListItem(
-                            image = image,
-                            onClick = {
-                                if (isNavigating) return@ImageListItem
-                                isNavigating = true
-                                AppLogger.i(TAG,
-                                    "🖼️ 点击列表项: albumId=$albumId, index=$index, fileName=${image.fileName}"
-                                )
-                                onImageClick(index)
-                            }
+                val listState = rememberLazyListState()
+                Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        itemsIndexed(
+                            images,
+                            key = { _, item -> item.id },
+                            contentType = { _, _ -> "image_list_item" }
+                        ) { index, image ->
+                            ImageListItem(
+                                image = image,
+                                onClick = {
+                                    if (isNavigating) return@ImageListItem
+                                    isNavigating = true
+                                    AppLogger.i(TAG,
+                                        "🖼️ 点击列表项: albumId=$albumId, index=$index, fileName=${image.fileName}"
+                                    )
+                                    onImageClick(index)
+                                }
+                            )
+                        }
+                    }
+                    // 可拖动滚动条（图片数 > 20 时显示）
+                    if (images.size > 20) {
+                        DraggableScrollbar(
+                            totalRows = images.size,
+                            currentRow = listState.firstVisibleItemIndex,
+                            isScrollInProgress = listState.isScrollInProgress,
+                            onScrollToRow = { row -> listState.scrollToItem(row) },
+                            modifier = Modifier.align(Alignment.CenterEnd)
                         )
                     }
                 }

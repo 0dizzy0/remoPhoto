@@ -8,9 +8,11 @@ import com.remophoto.domain.model.Album
 import com.remophoto.domain.model.SortOrder
 import com.remophoto.domain.usecase.CategoryManager
 import com.remophoto.data.local.entity.AlbumEntity
+import com.remophoto.data.local.entity.CategoryEntity
 import com.remophoto.data.repository.AlbumRepository
 import com.remophoto.data.repository.SettingsRepository
 import com.remophoto.util.AppLogger
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -57,6 +59,20 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
     private val _filterCategoryName = MutableStateFlow<String?>(null)
     val filterCategoryName: StateFlow<String?> = _filterCategoryName.asStateFlow()
 
+    // 多选状态
+    private val _selectionMode = MutableStateFlow(false)
+    val selectionMode: StateFlow<Boolean> = _selectionMode.asStateFlow()
+
+    private val _selectedAlbumIds = MutableStateFlow<Set<Long>>(emptySet())
+    val selectedAlbumIds: StateFlow<Set<Long>> = _selectedAlbumIds.asStateFlow()
+
+    // 分类列表（供分类选择器弹窗使用）
+    private val _allCategories = MutableStateFlow<List<CategoryEntity>>(emptyList())
+    val allCategories: StateFlow<List<CategoryEntity>> = _allCategories.asStateFlow()
+
+    // 加载任务引用，用于取消旧协程防止竞态覆盖
+    private var loadJob: Job? = null
+
     init {
         loadSettings()
         loadAlbums()
@@ -78,7 +94,8 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun loadAlbums() {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _isLoading.value = true
             try {
                 albumRepository.getRootAlbums().collect { rootAlbums ->
@@ -121,7 +138,8 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
     fun loadAlbumsByCategory(categoryId: Long, categoryName: String) {
         _filterCategoryId.value = categoryId
         _filterCategoryName.value = categoryName
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _isLoading.value = true
             try {
                 val categoryAlbums = categoryManager.getAlbumIdsForCategory(categoryId).toSet()
@@ -322,6 +340,67 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
             )
         }
         return model
+    }
+
+    // ===== 多选操作 =====
+
+    /** 进入多选模式并选中指定相册 */
+    fun enterSelectionMode(albumId: Long) {
+        _selectionMode.value = true
+        _selectedAlbumIds.value = setOf(albumId)
+        AppLogger.i(TAG, "进入多选模式，初始选中: albumId=$albumId")
+    }
+
+    /** 退出多选模式并清空选中 */
+    fun exitSelectionMode() {
+        _selectionMode.value = false
+        _selectedAlbumIds.value = emptySet()
+        AppLogger.i(TAG, "退出多选模式")
+    }
+
+    /** 切换相册选中状态 */
+    fun toggleSelection(albumId: Long) {
+        val current = _selectedAlbumIds.value
+        _selectedAlbumIds.value = if (albumId in current) {
+            current - albumId
+        } else {
+            current + albumId
+        }
+    }
+
+    /** 加载全部分类列表 */
+    fun loadAllCategories() {
+        viewModelScope.launch {
+            try {
+                categoryManager.getAllCategories().collect { list ->
+                    _allCategories.value = list
+                }
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "加载分类列表失败", e)
+            }
+        }
+    }
+
+    /** 将选中的相册批量添加到指定分类 */
+    fun addSelectedToCategory(categoryId: Long) {
+        val albumIds = _selectedAlbumIds.value
+        if (albumIds.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                var successCount = 0
+                for (albumId in albumIds) {
+                    categoryManager.assignAlbumToCategory(albumId, categoryId)
+                    successCount++
+                }
+                AppLogger.i(TAG,
+                    "批量添加到分类: categoryId=$categoryId, 成功=$successCount/${albumIds.size}"
+                )
+                // 完成后退出多选模式
+                exitSelectionMode()
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "批量添加到分类失败: categoryId=$categoryId", e)
+            }
+        }
     }
 
     companion object {
