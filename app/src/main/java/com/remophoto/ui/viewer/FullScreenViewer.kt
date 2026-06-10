@@ -179,7 +179,8 @@ fun FullScreenViewer(
         }
     }
 
-    // 全屏模式：不修改 systemUiVisibility，依赖 enableEdgeToEdge() 的透明状态栏
+    // 全屏：不修改 systemUiVisibility，依赖 enableEdgeToEdge() 透明状态栏
+    // FLAG_FULLSCREEN 会导致窗口尺寸变化(+108px=36dp) 引发整体界面跳动
     DisposableEffect(Unit) {
         AppLogger.i(TAG, "🟢 FullScreenViewer 进入组合: albumId=$albumId, imageIndex=$imageIndex")
         onDispose {

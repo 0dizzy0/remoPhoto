@@ -15,7 +15,7 @@
 | 项目 | 详情 |
 |------|------|
 | 包名 | `com.remophoto` |
-| 当前阶段 | Phase 0 ✅ → Phase 1 ✅ → Phase 2 ✅ → Phase 3 ✅ → Phase 4 待开始 |
+| 当前阶段 | Phase 0 ✅ → Phase 1 ✅ → Phase 2 ✅ → Phase 3 ✅ → Phase 3.5 规划中 → Phase 4 待开始 |
 | minSdk / targetSdk | 29 / 35 |
 | 架构 | MVVM + Repository，手动 DI（`DependencyContainer`） |
 | 数据库 | Room 2.6.1 + KSP，7 张表 |
@@ -98,3 +98,36 @@
 **新增文件:** DraggableScrollbar.kt
 **修改文件:** AlbumCard.kt, AlbumListScreen.kt, AlbumListViewModel.kt, GalleryScreen.kt
 **修复 Bug:** P3-F05~F09
+
+### Phase 3 迭代 — 全屏跳动修复 (P3-F10, 2026-06-10)
+
+**问题链追踪（7 轮日志分析）：**
+1. TopAppBar `titleLarge` → `titleSmall`（字号缩小）
+2. `scaleIn/scaleOut` → 纯 `fadeIn/fadeOut`（去缩放动画）
+3. Scaffold window insets 响应 `FLAG_FULLSCREEN` → 用 `Box` 替代 `Scaffold` + `TopAppBar.windowInsets=0` 免疫
+4. `FLAG_HIDE_NAVIGATION` 导致底部导航栏变化 → 仅保留 `FLAG_FULLSCREEN`
+5. `FLAG_FULLSCREEN` 导致系统窗口尺寸变化 (+108px=36dp 状态栏高度) → **彻底移除 `systemUiVisibility` 修改**
+
+**最终方案：** 完全移除所有 `systemUiVisibility` 修改，仅依赖 `enableEdgeToEdge()` 的透明状态栏。
+Gallery 用 `Box` + `TopAppBar(windowInsets=0)` 替代 `Scaffold`，窗口尺寸永远不变，零跳动。
+
+**修改文件:** GalleryScreen.kt, FullScreenViewer.kt
+**新增 Bug:** P3-F10
+
+---
+
+## Phase 3.5 计划：流畅性优化冲刺（2026-06-10 规划中）
+
+| 编号 | 任务 | 文件 |
+|------|------|------|
+| P3.5-01 | DB 索引: `images.file_path`, `album_id+last_modified` 复合, `albums.directory_path` | ImageDao.kt, AlbumDao.kt |
+| P3.5-02 | Domain Model `@Immutable`: ImageItem, Album, ImageRepository | domain/model/*.kt |
+| P3.5-03 | ViewModel Flow 泄漏: GalleryViewModel/FullScreenViewModel 加 `loadJob?.cancel()` | GalleryVM.kt, FullScreenVM.kt |
+| P3.5-04 | 主线程重操作下沉: `buildAlbumTree`, `sortImageEntities`, `flattenAlbums` → `Dispatchers.Default` | AlbumListVM.kt, GalleryVM.kt |
+| P3.5-05 | 仓库扫描并行化: `Semaphore(3)` + `async` 多仓库并行扫描 | FileScanner.kt, RepoManagerVM.kt |
+| P3.5-06 | 图片加载: 缩略图独立磁盘缓存目录, crossfade 降为 0, emoji 换纯色, 全屏 size 上限 | ImageLoader.kt, ImageThumbnail.kt |
+| P3.5-07 | 冗余清理: 提取共享 SettingsSection, 移除 FullScreenImage/死代码/日志回调 | Settings*.kt, ZoomableImage.kt, Constants.kt |
+| P3.5-08 | 重组优化: `findAlbumById` → `remember`, `Modifier.then` 预提取, 拆分大 Composable | AlbumListScreen.kt, AlbumCard.kt, FullScreenViewer.kt |
+| P3.5-09 | 内存: `scaleMap` LRU 限制, 自动播放 `snapshotFlow` | FullScreenViewModel.kt |
+
+**执行顺序:** P3.5-01 → 02 → 03 → 04 → 06 → 08 → 05 → 07 → 09
