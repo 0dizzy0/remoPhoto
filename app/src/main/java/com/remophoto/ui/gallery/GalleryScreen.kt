@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import android.content.res.Resources
+import androidx.compose.ui.layout.onGloballyPositioned
 import com.remophoto.domain.model.ImageItem
 import com.remophoto.ui.components.DraggableScrollbar
 import com.remophoto.ui.components.EmptyStateView
@@ -56,6 +58,14 @@ fun GalleryScreen(
 
     val displayName = album?.name ?: albumName
 
+    // ===== 日志：GalleryScreen 生命周期 + 布局信息 =====
+    DisposableEffect(albumId) {
+        AppLogger.i(TAG, "🟢 GalleryScreen 进入组合: albumId=$albumId, displayName=$displayName")
+        onDispose {
+            AppLogger.i(TAG, "🔴 GalleryScreen 离开组合: albumId=$albumId")
+        }
+    }
+
     // 防重复导航保护（切换相册时重置）
     var isNavigating by remember { mutableStateOf(false) }
     LaunchedEffect(albumId) {
@@ -63,11 +73,14 @@ fun GalleryScreen(
     }
 
     Scaffold(
-        topBar = {
+            topBar = {
             TopAppBar(
+                modifier = Modifier.onGloballyPositioned { coords ->
+                    AppLogger.i(TAG, "📐 TopAppBar: size=${coords.size}, isAttached=${coords.isAttached}")
+                },
                 title = {
                     Column {
-                        Text(displayName, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(displayName, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         if (images.isNotEmpty()) {
                             Text(
                                 text = "${images.size} 张图片",
@@ -110,6 +123,9 @@ fun GalleryScreen(
             )
         }
     ) { padding ->
+        LaunchedEffect(padding) {
+            AppLogger.i(TAG, "📐 Scaffold padding: top=${padding.calculateTopPadding()}, bottom=${padding.calculateBottomPadding()}")
+        }
         when {
             isLoading -> {
                 Box(

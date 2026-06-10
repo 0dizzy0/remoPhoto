@@ -179,28 +179,11 @@ fun FullScreenViewer(
         }
     }
 
-    // 全屏沉浸
+    // 全屏模式：不修改 systemUiVisibility，依赖 enableEdgeToEdge() 的透明状态栏
     DisposableEffect(Unit) {
-        val window = (context as? android.app.Activity)?.window ?: return@DisposableEffect onDispose { }
-        val decorView = window.decorView
-        val originalUiVisibility = decorView.systemUiVisibility
-
-        AppLogger.d(TAG, "全屏前 UI visibility: $originalUiVisibility")
-
-        decorView.systemUiVisibility = (
-            android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-            or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-            or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-            or android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
-            or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-            or android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-        )
-
-        AppLogger.d(TAG, "全屏 UI flag 已设置: LAYOUT_FULLSCREEN + FULLSCREEN + IMMERSIVE_STICKY")
-
+        AppLogger.i(TAG, "🟢 FullScreenViewer 进入组合: albumId=$albumId, imageIndex=$imageIndex")
         onDispose {
-            decorView.systemUiVisibility = originalUiVisibility
-            AppLogger.d(TAG, "全屏 UI flag 已恢复: $originalUiVisibility")
+            AppLogger.i(TAG, "🔴 FullScreenViewer 离开组合: albumId=$albumId")
         }
     }
 
@@ -250,10 +233,8 @@ fun FullScreenViewer(
 
     AnimatedVisibility(
         visible = animVisible,
-        enter = scaleIn(initialScale = 0.85f, animationSpec = tween(250)) +
-                fadeIn(animationSpec = tween(200)),
-        exit = scaleOut(targetScale = 0.85f, animationSpec = tween(200)) +
-                fadeOut(animationSpec = tween(150))
+        enter = fadeIn(animationSpec = tween(200)),
+        exit = fadeOut(animationSpec = tween(150))
     ) {
         Box(
             modifier = Modifier
