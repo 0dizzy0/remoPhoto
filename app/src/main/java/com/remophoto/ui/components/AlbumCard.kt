@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +42,12 @@ fun AlbumCard(
 ) {
     val indentPadding = if (!compact) (album.depth * 24).dp else 0.dp
     val cardShape = MaterialTheme.shapes.medium
+    // 预提取多选边框 Modifier，避免重组时重复创建
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val selectionBorder = remember(selected, primaryColor) {
+        if (selected) Modifier.border(2.dp, primaryColor, cardShape)
+        else Modifier
+    }
 
     Box(
         modifier = Modifier
@@ -50,10 +57,7 @@ fun AlbumCard(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .then(
-                    if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, cardShape)
-                    else Modifier
-                )
+                .then(selectionBorder)
                 .combinedClickable(
                     onClick = onClick,
                     onLongClick = onLongClick

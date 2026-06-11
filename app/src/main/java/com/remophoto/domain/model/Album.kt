@@ -1,8 +1,11 @@
 package com.remophoto.domain.model
 
+import androidx.compose.runtime.Immutable
+
 /**
  * 相册领域模型（UI 层使用）
  */
+@Immutable
 data class Album(
     val id: Long = 0,
     val name: String,

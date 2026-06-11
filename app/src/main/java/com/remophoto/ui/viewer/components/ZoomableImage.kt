@@ -188,6 +188,7 @@ fun ZoomableImage(
             model = ImageRequest.Builder(context)
                 .data(image.filePath)
                 .crossfade(false)
+                .size(2048)
                 .build(),
             contentDescription = image.fileName,
             modifier = Modifier
@@ -198,32 +199,6 @@ fun ZoomableImage(
                     translationX = offsetX
                     translationY = offsetY
                 },
-            contentScale = ContentScale.Fit
-        )
-    }
-}
-
-/**
- * 简单的全屏图片组件（无缩放，用于 HorizontalPager 中）
- */
-@Composable
-fun FullScreenImage(
-    image: ImageItem,
-    modifier: Modifier = Modifier
-) {
-    val context = LocalContext.current
-
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        AsyncImage(
-            model = ImageRequest.Builder(context)
-                .data(image.filePath)
-                .crossfade(false)
-                .build(),
-            contentDescription = image.fileName,
-            modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Fit
         )
     }

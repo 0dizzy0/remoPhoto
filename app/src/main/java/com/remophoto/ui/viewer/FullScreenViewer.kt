@@ -2,6 +2,7 @@ package com.remophoto.ui.viewer
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -33,7 +34,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.remophoto.RemoPhotoApp
 import com.remophoto.domain.model.ImageItem
 import com.remophoto.ui.theme.ViewerBackground
-import com.remophoto.ui.viewer.components.FullScreenImage
 import com.remophoto.ui.viewer.components.FullScreenOverlay
 import com.remophoto.ui.viewer.components.ZoomableImage
 import com.remophoto.util.AppLogger
@@ -88,6 +88,12 @@ fun FullScreenViewer(
     var useVolumeKeys by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) {
         settingsRepository.useVolumeKeys.collect { useVolumeKeys = it }
+    }
+
+    // 系统返回键：停止播放并返回缩略图列表
+    BackHandler {
+        viewModel.stopPlaying()
+        onBack()
     }
 
     // 加载图片
@@ -331,10 +337,6 @@ fun FullScreenViewer(
                         onScrollDown = { viewModel.nextImage() },
                         modifier = Modifier
                             .fillMaxSize()
-                            .onSizeChanged { coords ->
-                                // 记录屏幕宽度用于点击区域判断
-                                // 使用整个 pager 页面宽度（而非实际屏幕）
-                            }
                     )
                 }
             }

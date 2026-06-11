@@ -10,7 +10,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,7 +23,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.remophoto.data.local.entity.RepositoryEntity
-import com.remophoto.ui.scanner.ScanProgressDialog
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -47,10 +49,10 @@ fun RepositoryManagerScreen(
 
     // 扫描状态
     val isScanning by viewModel.isScanning.collectAsState()
-    val scanProgress by viewModel.scanProgress.collectAsState()
+    val scanningRepoIds by viewModel.scanningRepoIds.collectAsState()
+    val pausedRepoIds by viewModel.pausedRepoIds.collectAsState()
+    val scanProgressMap by viewModel.scanProgressMap.collectAsState()
     val scanMessage by viewModel.scanMessage.collectAsState()
-    val scanImageCount by viewModel.scanImageCount.collectAsState()
-    val scanningRepoId by viewModel.scanningRepoId.collectAsState()
 
     // SAF 目录选择器
     val directoryPickerLauncher = rememberLauncherForActivityResult(
@@ -72,14 +74,16 @@ fun RepositoryManagerScreen(
         }
     }
 
-    // 扫描完成后回调
-    LaunchedEffect(isScanning, scanProgress) {
-        if (!isScanning && scanProgress >= 1f) {
+    // 扫描完成 Snackbar
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(isScanning) {
+        if (!isScanning && scanningRepoIds.isEmpty()) {
             onScanComplete()
         }
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("仓库管理") },
@@ -147,10 +151,13 @@ fun RepositoryManagerScreen(
                 items(repositories, key = { it.id }) { repo ->
                     RepositoryItem(
                         repo = repo,
-                        isScanning = scanningRepoId == repo.id,
-                        scanProgress = if (scanningRepoId == repo.id) scanProgress else 0f,
+                        isScanning = repo.id in scanningRepoIds,
+                        isPaused = repo.id in pausedRepoIds,
+                        scanProgress = scanProgressMap[repo.id] ?: 0f,
                         onDelete = { deleteConfirmRepoId = repo.id },
-                        onRescan = { viewModel.rescanRepository(repo.id) }
+                        onRescan = { viewModel.rescanRepository(repo.id) },
+                        onPause = { viewModel.pauseScan(repo.id) },
+                        onCancelScan = { viewModel.cancelRepoScan(repo.id) }
                     )
                 }
             }
@@ -187,17 +194,7 @@ fun RepositoryManagerScreen(
         )
     }
 
-    // 扫描进度对话框
-    if (isScanning) {
-        ScanProgressDialog(
-            progress = scanProgress,
-            message = scanMessage,
-            currentCount = scanImageCount,
-            onDismissRequest = { /* 扫描中不可关闭 */ },
-            onRunInBackground = { viewModel.runScanInBackground() },
-            onCancel = { viewModel.cancelScan() }
-        )
-    }
+    // 扫描进度已通过仓库卡片内联显示，不再使用模态对话框
 }
 
 /**
@@ -207,9 +204,12 @@ fun RepositoryManagerScreen(
 private fun RepositoryItem(
     repo: RepositoryEntity,
     isScanning: Boolean = false,
+    isPaused: Boolean = false,
     scanProgress: Float = 0f,
     onDelete: () -> Unit,
-    onRescan: () -> Unit
+    onRescan: () -> Unit,
+    onPause: () -> Unit = {},
+    onCancelScan: () -> Unit = {}
 ) {
     val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
 
@@ -298,20 +298,53 @@ private fun RepositoryItem(
                     )
                 }
 
-                // 右侧：操作按钮
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    IconButton(onClick = onRescan) {
+                // 右侧：操作按钮（始终三按钮：▶/⏸ | ⏹ | 🗑）
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    // 按钮1：播放/暂停切换（左）
+                    val isActive = isScanning && !isPaused
+                    IconButton(onClick = {
+                        when {
+                            isPaused -> onRescan()      // 暂停中 → resumeScan
+                            isScanning -> onPause()     // 运行中 → pauseScan
+                            else -> onRescan()          // 空闲 → startScan
+                        }
+                    }) {
                         Icon(
-                            Icons.Default.Refresh,
-                            contentDescription = "重新扫描",
-                            tint = MaterialTheme.colorScheme.primary
+                            imageVector = when {
+                                isPaused -> Icons.Default.PlayArrow
+                                isScanning -> Icons.Default.Pause
+                                else -> Icons.Default.PlayArrow
+                            },
+                            contentDescription = when {
+                                isPaused -> "恢复扫描"
+                                isScanning -> "暂停扫描"
+                                else -> "开始扫描"
+                            },
+                            tint = when {
+                                isPaused -> MaterialTheme.colorScheme.primary
+                                isScanning -> MaterialTheme.colorScheme.tertiary
+                                else -> MaterialTheme.colorScheme.primary
+                            }
                         )
                     }
+                    // 按钮2：取消扫描（中）— 方块停止图标
+                    IconButton(
+                        onClick = onCancelScan,
+                        enabled = isScanning
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Stop,
+                            contentDescription = "取消扫描",
+                            tint = if (isScanning) MaterialTheme.colorScheme.error
+                                   else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                        )
+                    }
+                    // 按钮3：删除仓库（右）— 垃圾桶图标
                     IconButton(onClick = onDelete) {
                         Icon(
-                            Icons.Default.Delete,
+                            imageVector = Icons.Default.Delete,
                             contentDescription = "删除仓库",
-                            tint = MaterialTheme.colorScheme.error
+                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
                         )
                     }
                 }

@@ -9,12 +9,16 @@ import com.remophoto.domain.model.SortOrder
 import com.remophoto.domain.usecase.CategoryManager
 import com.remophoto.data.local.entity.AlbumEntity
 import com.remophoto.data.local.entity.CategoryEntity
+import com.remophoto.data.local.entity.RepositoryEntity
 import com.remophoto.data.repository.AlbumRepository
+import com.remophoto.data.local.dao.RepositoryDao
 import com.remophoto.data.repository.SettingsRepository
 import com.remophoto.util.AppLogger
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 相册列表 ViewModel
@@ -25,6 +29,7 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val container = (application as RemoPhotoApp).dependencyContainer
     private val albumRepository: AlbumRepository = container.albumRepository
+    private val repositoryDao: RepositoryDao = container.repositoryDao
     private val settingsRepository: SettingsRepository = container.settingsRepository
     private val categoryManager: CategoryManager = container.categoryManager
 
@@ -70,12 +75,30 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
     private val _allCategories = MutableStateFlow<List<CategoryEntity>>(emptyList())
     val allCategories: StateFlow<List<CategoryEntity>> = _allCategories.asStateFlow()
 
+    /** 当前页的扁平相册列表（预计算，避免 UI 线程递归） */
+    private val _pagedAlbums = MutableStateFlow<List<Album>>(emptyList())
+    val pagedAlbums: StateFlow<List<Album>> = _pagedAlbums.asStateFlow()
+
+    // ===== 仓库层级选择 =====
+
+    /** 仓库列表 */
+    private val _repoList = MutableStateFlow<List<RepositoryEntity>>(emptyList())
+    val repoList: StateFlow<List<RepositoryEntity>> = _repoList.asStateFlow()
+
+    /** 当前选中的仓库 ID（null = 显示仓库列表） */
+    private val _selectedRepoId = MutableStateFlow<Long?>(null)
+    val selectedRepoId: StateFlow<Long?> = _selectedRepoId.asStateFlow()
+
+    /** 当前选中的仓库名 */
+    private val _selectedRepoName = MutableStateFlow<String?>(null)
+    val selectedRepoName: StateFlow<String?> = _selectedRepoName.asStateFlow()
+
     // 加载任务引用，用于取消旧协程防止竞态覆盖
     private var loadJob: Job? = null
 
     init {
         loadSettings()
-        loadAlbums()
+        loadRepos()
     }
 
     // ===== 数据加载 =====
@@ -88,7 +111,19 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
         }
         viewModelScope.launch {
             settingsRepository.albumsPerPage.collect { count ->
-                _albumsPerPage.value = count
+                if (_albumsPerPage.value != count) {
+                    _albumsPerPage.value = count
+                    _currentPage.value = 1
+                    recomputePagedAlbums()
+                }
+            }
+        }
+    }
+
+    private fun loadRepos() {
+        viewModelScope.launch {
+            repositoryDao.getAllRepositories().collect { repos ->
+                _repoList.value = repos
             }
         }
     }
@@ -98,20 +133,25 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
         loadJob = viewModelScope.launch {
             _isLoading.value = true
             try {
-                albumRepository.getRootAlbums().collect { rootAlbums ->
+                val repoId = _selectedRepoId.value
+                if (repoId != null) {
+                    // 按仓库加载：使用挂起函数获取根相册
+                    val rootAlbums = albumRepository.getRootAlbumsByRepository(repoId)
                     _allAlbums.value = rootAlbums
                     val tree = buildAlbumTree(rootAlbums)
                     _albumTree.value = tree
                     _isEmpty.value = tree.isEmpty()
                     _isLoading.value = false
-                    // 日志：记录每个相册的封面信息
-                    for (album in tree) {
-                        AppLogger.d(TAG,
-                            "相册列表项: name=\"${album.name}\", id=${album.id}, " +
-                            "imageCount=${album.imageCount}, " +
-                            "coverPath=${album.coverImagePath ?: "null"}, " +
-                            "children=${album.children.size}"
-                        )
+                    recomputePagedAlbums()
+                } else {
+                    // 全量加载（响应式 Flow）
+                    albumRepository.getRootAlbums().collect { rootAlbums ->
+                        _allAlbums.value = rootAlbums
+                        val tree = buildAlbumTree(rootAlbums)
+                        _albumTree.value = tree
+                        _isEmpty.value = tree.isEmpty()
+                        _isLoading.value = false
+                        recomputePagedAlbums()
                     }
                 }
             } catch (e: Exception) {
@@ -119,6 +159,28 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
                 _isLoading.value = false
             }
         }
+    }
+
+    /** 选择仓库，加载该仓库的相册 */
+    fun selectRepo(repoId: Long, repoName: String) {
+        // 先清空旧数据，避免闪现上一仓库的相册
+        _albumTree.value = emptyList()
+        _pagedAlbums.value = emptyList()
+        _isLoading.value = true
+        _selectedRepoId.value = repoId
+        _selectedRepoName.value = repoName
+        _currentPage.value = 1
+        loadAlbums()
+    }
+
+    /** 返回仓库列表 */
+    fun clearRepoSelection() {
+        _albumTree.value = emptyList()
+        _pagedAlbums.value = emptyList()
+        _selectedRepoId.value = null
+        _selectedRepoName.value = null
+        _currentPage.value = 1
+        loadAlbums()
     }
 
     /**
@@ -151,6 +213,7 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
                     _albumTree.value = filteredTree
                     _isEmpty.value = filteredTree.isEmpty()
                     _isLoading.value = false
+                    recomputePagedAlbums()
                     AppLogger.i(TAG,
                         "分类筛选: category=\"$categoryName\"(id=$categoryId), " +
                         "匹配相册=${categoryAlbums.size}, 显示树=${filteredTree.size}"
@@ -175,8 +238,8 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
     /**
      * 筛选相册树：保留属于分类的相册及其祖先
      */
-    private fun filterTreeByCategory(tree: List<Album>, categoryAlbumIds: Set<Long>): List<Album> {
-        return tree.mapNotNull { album -> filterNode(album, categoryAlbumIds) }
+    private suspend fun filterTreeByCategory(tree: List<Album>, categoryAlbumIds: Set<Long>): List<Album> = withContext(Dispatchers.Default) {
+        tree.mapNotNull { album -> filterNode(album, categoryAlbumIds) }
     }
 
     private fun filterNode(album: Album, categoryAlbumIds: Set<Long>): Album? {
@@ -195,7 +258,7 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
     /**
      * 将扁平相册列表构建为嵌套树
      */
-    private suspend fun buildAlbumTree(allAlbums: List<AlbumEntity>): List<Album> {
+    private suspend fun buildAlbumTree(allAlbums: List<AlbumEntity>): List<Album> = withContext(Dispatchers.Default) {
         val albumMap = mutableMapOf<Long, Album>()
         val roots = mutableListOf<Album>()
 
@@ -225,7 +288,7 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
             }
         }
 
-        return roots
+        return@withContext roots
     }
 
     private fun getChildren(
@@ -264,6 +327,7 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
             SortOrder.SIZE_DESC -> current.sortedByDescending { it.imageCount }
         }
         _albumTree.value = sorted
+        viewModelScope.launch { recomputePagedAlbums() }
     }
 
     // ===== 布局切换 =====
@@ -278,6 +342,7 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
         val total = totalPages()
         if (page in 1..total) {
             _currentPage.value = page
+            viewModelScope.launch { recomputePagedAlbums() }
         }
     }
 
@@ -290,33 +355,50 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     /**
-     * 计算总页数（基于所有相册的扁平计数）
+     * 计算总页数（基于平铺后的相册总数，与 recomputePagedAlbums 同口径）
      */
     fun totalPages(): Int {
-        val count = _allAlbums.value.size
+        // 使用 _pagedAlbums 对应的全量数据：_albumTree 平铺计数
+        val count = _albumTree.value.flatCount()
         if (count == 0) return 1
         val pages = count / _albumsPerPage.value
         return if (count % _albumsPerPage.value == 0) pages else pages + 1
+    }
+
+    /** 递归计算树中所有节点数 */
+    private fun List<Album>.flatCount(): Int {
+        var count = 0
+        for (album in this) {
+            count += 1 + album.children.flatCount()
+        }
+        return count
     }
 
     /**
      * 获取当前页的相册（扁平列表）
      */
     fun getPagedAlbums(): List<Album> {
-        val all = flattenAlbums(_albumTree.value)
-        val perPage = _albumsPerPage.value
-        val offset = (_currentPage.value - 1) * perPage
-        return if (offset >= all.size) emptyList()
-        else all.drop(offset).take(perPage)
+        return _pagedAlbums.value
     }
 
-    private fun flattenAlbums(albums: List<Album>): List<Album> {
+    private suspend fun flattenAlbums(albums: List<Album>): List<Album> = withContext(Dispatchers.Default) {
         val result = mutableListOf<Album>()
         for (album in albums) {
             result.add(album)
             result.addAll(flattenAlbums(album.children))
         }
-        return result
+        result
+    }
+
+    /**
+     * 预计算当前页的扁平相册列表（异步执行，避免 UI 线程递归）
+     */
+    private suspend fun recomputePagedAlbums() {
+        val all = flattenAlbums(_albumTree.value)
+        val perPage = _albumsPerPage.value
+        val offset = (_currentPage.value - 1) * perPage
+        _pagedAlbums.value = if (offset >= all.size) emptyList()
+        else all.drop(offset).take(perPage)
     }
 
     // ===== 工具方法 =====

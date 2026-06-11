@@ -9,13 +9,18 @@ import com.remophoto.data.local.entity.RepositoryEntity
 import com.remophoto.data.repository.RepositoryManager
 import com.remophoto.domain.usecase.ScanImagesUseCase
 import com.remophoto.util.AppLogger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 仓库管理 ViewModel
@@ -44,27 +49,32 @@ class RepositoryManagerViewModel(application: Application) : AndroidViewModel(ap
 
     // ===== 扫描状态 =====
 
-    /** 当前正在扫描的仓库 ID（null = 无扫描进行中） */
-    private val _scanningRepoId = MutableStateFlow<Long?>(null)
-    val scanningRepoId: StateFlow<Long?> = _scanningRepoId.asStateFlow()
+    /** 正在扫描的仓库 ID 集合（支持多仓库并发） */
+    private val _scanningRepoIds = MutableStateFlow<Set<Long>>(emptySet())
+    val scanningRepoIds: StateFlow<Set<Long>> = _scanningRepoIds.asStateFlow()
+
+    /** 各仓库扫描进度 (repoId → progress 0..1) */
+    private val _scanProgressMap = MutableStateFlow<Map<Long, Float>>(emptyMap())
+    val scanProgressMap: StateFlow<Map<Long, Float>> = _scanProgressMap.asStateFlow()
+
+    /** 已暂停的仓库 ID 集合（UI 用：区分运行中 vs 暂停中） */
+    private val _pausedRepoIds = MutableStateFlow<Set<Long>>(emptySet())
+    val pausedRepoIds: StateFlow<Set<Long>> = _pausedRepoIds.asStateFlow()
 
     private val _isScanning = MutableStateFlow(false)
     val isScanning: StateFlow<Boolean> = _isScanning.asStateFlow()
 
-    private val _scanProgress = MutableStateFlow(0f)
-    val scanProgress: StateFlow<Float> = _scanProgress.asStateFlow()
-
     private val _scanMessage = MutableStateFlow("正在扫描…")
     val scanMessage: StateFlow<String> = _scanMessage.asStateFlow()
 
-    private val _scanImageCount = MutableStateFlow(0)
-    val scanImageCount: StateFlow<Int> = _scanImageCount.asStateFlow()
+    /** 各仓库扫描 Job（线程安全） */
+    private val scanJobs = ConcurrentHashMap<Long, Job>()
 
-    /** 当前扫描协程的 Job，用于取消 */
-    private var scanJob: Job? = null
+    /** 暂停时保存的进度 (repoId → progress)，恢复时从此位置继续 */
+    private val savedProgress = ConcurrentHashMap<Long, Float>()
 
-    /** 等待扫描的仓库 ID 队列（当已有扫描进行中时排队） */
-    private val scanQueue = mutableListOf<Long>()
+    /** 并发扫描信号量，最多 3 个仓库同时扫描 */
+    private val scanSemaphore = Semaphore(3)
 
     /**
      * 初始化：加载仓库列表
@@ -130,101 +140,137 @@ class RepositoryManagerViewModel(application: Application) : AndroidViewModel(ap
     }
 
     /**
-     * 取消当前扫描
+     * 暂停扫描 — 保存当前进度，取消协程，进度条保留显示
      */
-    fun cancelScan() {
-        scanJob?.cancel()
-        scanJob = null
-        scanQueue.clear()
-        _isScanning.value = false
-        _scanningRepoId.value = null
-        _scanMessage.value = "扫描已取消"
+    fun pauseScan(repoId: Long) {
+        if (repoId in _pausedRepoIds.value) {
+            AppLogger.w(TAG, "[pause] 已暂停忽略: repo=$repoId")
+            return
+        }
+        val currentProgress = _scanProgressMap.value[repoId] ?: 0f
+        savedProgress[repoId] = currentProgress
+        _pausedRepoIds.update { it + repoId }
+        val hadJob = scanJobs.containsKey(repoId)
+        scanJobs[repoId]?.cancel()
+        scanJobs.remove(repoId)
+        AppLogger.i(TAG, "[pause] 暂停: repo=$repoId progress=$currentProgress hadJob=$hadJob")
     }
 
     /**
-     * 执行全量扫描（排队机制：若有扫描进行中则排队等待）
+     * 取消扫描 — 清除进度，下次从 0 开始
+     */
+    fun cancelRepoScan(repoId: Long) {
+        AppLogger.i(TAG, "[cancel] 取消: repo=$repoId hasJob=${scanJobs.containsKey(repoId)} paused=${repoId in _pausedRepoIds.value}")
+        savedProgress.remove(repoId)
+        _pausedRepoIds.update { it - repoId }
+        scanJobs[repoId]?.cancel()
+        scanJobs.remove(repoId)
+        _scanningRepoIds.update { it - repoId }
+        _scanProgressMap.update { it - repoId }
+        _isScanning.update { _scanningRepoIds.value.isNotEmpty() }
+    }
+
+    /**
+     * 取消所有扫描
+     */
+    fun cancelAllScans() {
+        savedProgress.clear()
+        _pausedRepoIds.update { emptySet() }
+        scanJobs.values.forEach { it.cancel() }
+        scanJobs.clear()
+        _scanningRepoIds.update { emptySet() }
+        _scanProgressMap.update { emptyMap() }
+        _isScanning.value = false
+    }
+
+    /**
+     * 开始/恢复扫描
      */
     fun startScan(repoId: Long) {
         val manager = repositoryManager ?: return
-        // 去重：已在扫描队列中则跳过
-        if (_scanningRepoId.value == repoId || scanQueue.contains(repoId)) return
-
-        // 如果已有扫描在进行中，加入队列排队
-        if (_isScanning.value || scanJob?.isActive == true) {
-            scanQueue.add(repoId)
-            _scanMessage.value = "已有扫描进行中，新任务已排队…"
-            AppLogger.i("RepoManager", "扫描排队: repoId=$repoId, 队列=${scanQueue.size}")
+        val scanning = repoId in _scanningRepoIds.value
+        val paused = repoId in _pausedRepoIds.value
+        AppLogger.i(TAG, "[start] 请求: repo=$repoId scanning=$scanning paused=$paused")
+        // 防重复（暂停中可重启）
+        if (scanning && !paused) {
+            AppLogger.d(TAG, "[start] 跳过: repo=$repoId 已在运行中")
             return
         }
-
-        executeScan(repoId, manager)
+        val offset = if (paused) {
+            _pausedRepoIds.update { it - repoId }
+            savedProgress.remove(repoId) ?: 0f
+        } else {
+            savedProgress.remove(repoId)
+            0f
+        }
+        executeScan(repoId, manager, offset)
     }
 
     /**
-     * 实际执行扫描（内部方法）
+     * 执行扫描，progressOffset 用于暂停恢复时从保存位置继续
      */
-    private fun executeScan(repoId: Long, manager: RepositoryManager) {
-        scanJob = viewModelScope.launch(Dispatchers.IO) {
+    private fun executeScan(repoId: Long, manager: RepositoryManager, progressOffset: Float = 0f) {
+        _scanningRepoIds.update { it + repoId }
+        _scanProgressMap.update { it + (repoId to progressOffset) }
+        _isScanning.value = true
+
+        val job = viewModelScope.launch(Dispatchers.IO) {
             try {
-                _isScanning.value = true
-                _scanningRepoId.value = repoId
-                _scanProgress.value = 0f
-                _scanMessage.value = "正在准备扫描…"
-                _scanImageCount.value = 0
-
-                val repo = manager.getRepositoryById(repoId) ?: run {
-                    _errorMessage.value = "仓库不存在"
-                    finishScanAndDequeue(manager)
-                    return@launch
-                }
-
-                val rootUri = Uri.parse(repo.uriString)
-
-                val totalImages = scanImagesUseCase.executeFullScan(
-                    repoId = repoId,
-                    rootUri = rootUri,
-                    onProgress = { progress ->
-                        _scanProgress.value = progress
-                        _scanMessage.value = when {
-                            progress < 0.5f -> "正在遍历目录…"
-                            progress < 0.6f -> "正在创建相册…"
-                            progress < 0.9f -> "正在提取图片索引…"
-                            progress < 1f -> "正在更新统计…"
-                            else -> "扫描完成"
+                scanSemaphore.withPermit {
+                    try {
+                        val repo = manager.getRepositoryById(repoId) ?: run {
+                            _errorMessage.value = "仓库不存在"
+                            return@withPermit
                         }
+
+                        val rootUri = Uri.parse(repo.uriString)
+
+                        val totalImages = scanImagesUseCase.executeFullScan(
+                            repoId = repoId,
+                            rootUri = rootUri,
+                            onProgress = { rawProgress ->
+                                if (!isActive) {
+                                    AppLogger.i(TAG, "[scan] 检测取消: repo=$repoId progress=$rawProgress")
+                                    throw CancellationException("Cancelled")
+                                }
+                                val displayProgress = progressOffset + rawProgress * (1f - progressOffset)
+                                _scanProgressMap.update { it + (repoId to displayProgress) }
+                            }
+                        )
+
+                        _scanProgressMap.update { it + (repoId to 1f) }
+                        _scanMessage.value = "扫描完成 ($totalImages 张)"
+                        AppLogger.i(TAG, "[scan] 完成: repo=$repoId images=$totalImages")
+
+                    } catch (e: CancellationException) {
+                        AppLogger.i(TAG, "[scan] 取消异常: repo=$repoId paused=${repoId in _pausedRepoIds.value}")
+                    } catch (e: Exception) {
+                        _errorMessage.value = "扫描失败: ${e.message}"
+                        AppLogger.e(TAG, "[scan] 异常: repo=$repoId ${e.message}", e)
+                    } finally {
+                        if (repoId !in _pausedRepoIds.value) {
+                            _scanningRepoIds.update { it - repoId }
+                            _scanProgressMap.update { it - repoId }
+                            AppLogger.d(TAG, "[scan] 清理(取消): repo=$repoId")
+                        } else {
+                            AppLogger.d(TAG, "[scan] 保留(暂停): repo=$repoId")
+                        }
+                        _isScanning.update { _scanningRepoIds.value.isNotEmpty() }
+                        scanJobs.remove(repoId)
                     }
-                )
-
-                _scanImageCount.value = totalImages
-                _scanProgress.value = 1f
-                _scanMessage.value = "扫描完成，共发现 $totalImages 张图片"
-
-                kotlinx.coroutines.delay(500)
-
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                // 取消是预期行为，不显示错误
-            } catch (e: Exception) {
-                _errorMessage.value = "扫描失败: ${e.message}"
-            } finally {
-                finishScanAndDequeue(manager)
+                }
+            } catch (e: CancellationException) {
+                AppLogger.i(TAG, "[scan] 信号量等中取消: repo=$repoId paused=${repoId in _pausedRepoIds.value}")
+                if (repoId !in _pausedRepoIds.value) {
+                    _scanningRepoIds.update { it - repoId }
+                    _scanProgressMap.update { it - repoId }
+                }
+                _isScanning.update { _scanningRepoIds.value.isNotEmpty() }
+                scanJobs.remove(repoId)
             }
         }
-    }
-
-    /**
-     * 完成当前扫描，处理队列中下一个
-     */
-    private fun finishScanAndDequeue(manager: RepositoryManager) {
-        _isScanning.value = false
-        _scanningRepoId.value = null
-        scanJob = null
-
-        // 处理队列中下一个仓库
-        if (scanQueue.isNotEmpty()) {
-            val nextRepoId = scanQueue.removeAt(0)
-            AppLogger.i("RepoManager", "扫描队列出队: repoId=$nextRepoId, 剩余=${scanQueue.size}")
-            executeScan(nextRepoId, manager)
-        }
+        scanJobs[repoId] = job
+        AppLogger.i(TAG, "[scan] 提交: repo=$repoId offset=$progressOffset")
     }
 
     /**
@@ -240,5 +286,9 @@ class RepositoryManagerViewModel(application: Application) : AndroidViewModel(ap
      */
     fun clearError() {
         _errorMessage.value = null
+    }
+
+    companion object {
+        private const val TAG = "RepoManagerVM"
     }
 }

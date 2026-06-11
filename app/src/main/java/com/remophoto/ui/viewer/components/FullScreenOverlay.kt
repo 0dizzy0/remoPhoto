@@ -50,14 +50,6 @@ fun FullScreenOverlay(
     onSeekTo: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // 自动隐藏计时器
-    LaunchedEffect(isVisible, currentIndex) {
-        if (isVisible) {
-            // 3 秒后自动隐藏（仅在可见时）
-            // 注：此效果会被用户交互重置
-        }
-    }
-
     Box(modifier = modifier.fillMaxSize()) {
         // 顶部栏
         AnimatedVisibility(

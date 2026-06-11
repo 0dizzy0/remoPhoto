@@ -1,10 +1,13 @@
 package com.remophoto.domain.model
 
+import androidx.compose.runtime.Immutable
+
 /**
  * 图片仓库领域模型（UI 层使用）
  *
  * 管理一个根图片仓库的元信息。
  */
+@Immutable
 data class ImageRepository(
     val id: Long = 0,
     val path: String,

@@ -13,8 +13,11 @@ import com.remophoto.data.repository.ImageRepository
 import com.remophoto.data.repository.SettingsRepository
 import com.remophoto.domain.model.SortOrder
 import com.remophoto.util.AppLogger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 图片网格 ViewModel
@@ -44,6 +47,9 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
     private var currentAlbumId: Long = 0L
 
+    /** 当前加载协程，用于取消上一次未完成的加载 */
+    private var loadJob: Job? = null
+
     // ===== 数据加载 =====
 
     fun loadAlbumAndImages(albumId: Long) {
@@ -53,7 +59,8 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             _album.value = null
         }
         currentAlbumId = albumId
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _isLoading.value = true
             try {
                 // 加载相册信息
@@ -80,8 +87,10 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 // 加载图片列表（Flow 响应式），按排序方式排序
                 imageRepository.getImagesByAlbum(albumId).collect { imageEntities ->
                     val effectiveSort = albumSortOrder ?: globalSortOrder
-                    val sorted = sortImageEntities(imageEntities, effectiveSort)
-                    _images.value = sorted.map { it.toDomainModel() }
+                    val sorted = withContext(Dispatchers.Default) {
+                        sortImageEntities(imageEntities, effectiveSort)
+                    }
+                    _images.value = sorted.map { ImageItem.fromEntity(it) }
                     _isLoading.value = false
                     AppLogger.d(TAG,
                         "图片排序: albumId=$albumId, sort=${effectiveSort.displayName}, " +
@@ -109,23 +118,6 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             SortOrder.SIZE_ASC -> entities.sortedBy { it.fileSize }
             SortOrder.SIZE_DESC -> entities.sortedByDescending { it.fileSize }
         }
-    }
-
-    // ===== 映射方法 =====
-
-    private fun ImageEntity.toDomainModel(): ImageItem {
-        return ImageItem(
-            id = id,
-            filePath = filePath,
-            fileName = fileName,
-            fileSize = fileSize,
-            lastModified = lastModified,
-            mimeType = mimeType,
-            width = width,
-            height = height,
-            albumId = albumId,
-            repositoryId = repositoryId
-        )
     }
 
     companion object {

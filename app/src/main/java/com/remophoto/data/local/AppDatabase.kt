@@ -33,7 +33,7 @@ import com.remophoto.data.local.entity.UserRepositoryAccess
         UserEntity::class,
         UserRepositoryAccess::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -78,8 +78,7 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 DATABASE_NAME
             )
-                // 生产环境请移除 destructive migration，使用正确的 Migration
-                // .fallbackToDestructiveMigration()
+                .addMigrations(Migrations.MIGRATION_1_2)
                 .build()
         }
     }

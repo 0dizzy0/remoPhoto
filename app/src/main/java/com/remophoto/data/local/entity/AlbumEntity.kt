@@ -12,7 +12,8 @@ import androidx.room.PrimaryKey
     tableName = "albums",
     indices = [
         Index("parent_album_id"),
-        Index("repository_id")
+        Index("repository_id"),
+        Index("directory_path")
     ]
 )
 data class AlbumEntity(

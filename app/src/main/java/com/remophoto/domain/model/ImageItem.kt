@@ -1,8 +1,12 @@
 package com.remophoto.domain.model
 
+import androidx.compose.runtime.Immutable
+import com.remophoto.data.local.entity.ImageEntity
+
 /**
  * 图片领域模型（UI 层使用）
  */
+@Immutable
 data class ImageItem(
     val id: Long = 0,
     val filePath: String,
@@ -15,6 +19,20 @@ data class ImageItem(
     val albumId: Long,
     val repositoryId: Long
 ) {
+    companion object {
+        fun fromEntity(entity: ImageEntity): ImageItem = ImageItem(
+            id = entity.id,
+            filePath = entity.filePath,
+            fileName = entity.fileName,
+            fileSize = entity.fileSize,
+            lastModified = entity.lastModified,
+            mimeType = entity.mimeType,
+            width = entity.width,
+            height = entity.height,
+            albumId = entity.albumId,
+            repositoryId = entity.repositoryId
+        )
+    }
     /** 是否为动图（GIF / WebP 动图） */
     val isAnimated: Boolean
         get() = mimeType in setOf("image/gif", "image/webp")

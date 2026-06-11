@@ -43,8 +43,8 @@ object ImageLoaderFactory {
                     add(ImageDecoderDecoder.Factory())
                 }
             }
-            // 跨 fade 动画（300ms）
-            .crossfade(300)
+            // 跨 fade 动画（150ms，降低视觉延迟）
+            .crossfade(150)
             // 默认启用磁盘缓存
             .diskCachePolicy(CachePolicy.ENABLED)
             // 内存缓存策略
@@ -66,12 +66,12 @@ object ImageLoaderFactory {
             }
             .diskCache {
                 DiskCache.Builder()
-                    .directory(context.cacheDir.resolve("image_cache"))
-                    .maxSizeBytes(Constants.THUMBNAIL_CACHE_SIZE.toLong())
+                    .directory(context.cacheDir.resolve("thumb_cache"))
+                    .maxSizeBytes((Constants.THUMBNAIL_CACHE_SIZE / 2).toLong())
                     .build()
             }
             // 不添加 GIF/ImageDecoder 解码器 ← 关键：缩略图不播放动图
-            .crossfade(200)
+            .crossfade(0)
             .diskCachePolicy(CachePolicy.ENABLED)
             .memoryCachePolicy(CachePolicy.ENABLED)
             .build()

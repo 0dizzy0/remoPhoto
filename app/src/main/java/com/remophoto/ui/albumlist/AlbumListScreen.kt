@@ -1,5 +1,6 @@
 package com.remophoto.ui.albumlist
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -37,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import com.remophoto.data.local.entity.CategoryEntity
+import com.remophoto.data.local.entity.RepositoryEntity
 import com.remophoto.domain.model.Album
 import com.remophoto.ui.components.AlbumCard
 import com.remophoto.ui.components.EmptyStateView
@@ -71,6 +73,10 @@ fun AlbumListScreen(
     val isGridView by viewModel.isGridView.collectAsState()
     val currentPage by viewModel.currentPage.collectAsState()
     val activeFilterCategoryName by viewModel.filterCategoryName.collectAsState()
+    val pagedAlbums by viewModel.pagedAlbums.collectAsState()
+    val selectedRepoId by viewModel.selectedRepoId.collectAsState()
+    val selectedRepoName by viewModel.selectedRepoName.collectAsState()
+    val repoList by viewModel.repoList.collectAsState()
 
     // 多选状态
     val selectionMode by viewModel.selectionMode.collectAsState()
@@ -93,6 +99,27 @@ fun AlbumListScreen(
     // 当前浏览路径的相册（用于子相册展开导航）
     var browsingAlbumId by remember { mutableStateOf<Long?>(null) }
     var browsingAlbumName by remember { mutableStateOf<String?>(null) }
+
+    // 判断当前显示模式
+    val showRepoLevel = selectedRepoId == null && activeFilterCategoryName == null
+    val showAlbumLevel = !showRepoLevel
+
+    // 系统返回键：逐级返回（子相册 → 父相册 → 仓库列表 → 退出）
+    BackHandler(enabled = selectionMode || browsingAlbumId != null || selectedRepoId != null || activeFilterCategoryName != null) {
+        when {
+            selectionMode -> viewModel.exitSelectionMode()
+            browsingAlbumId != null -> {
+                browsingAlbumId = null
+                browsingAlbumName = null
+            }
+            selectedRepoId != null -> {
+                browsingAlbumId = null
+                browsingAlbumName = null
+                viewModel.clearRepoSelection()
+            }
+            activeFilterCategoryName != null -> viewModel.clearCategoryFilter()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -124,16 +151,12 @@ fun AlbumListScreen(
                 // 正常模式 TopBar
                 TopAppBar(
                     title = {
-                        Column {
-                            Text(
-                                text = browsingAlbumName ?: activeFilterCategoryName ?: "remoPhoto"
-                            )
-                            if (activeFilterCategoryName != null) {
-                                Text(
-                                    text = "筛选: $activeFilterCategoryName",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                        // 分类筛选时显示分类名；仓库列表时显示应用名；进入仓库后不显示（空间留给按钮）
+                        activeFilterCategoryName?.let { name ->
+                            Text(text = name, style = MaterialTheme.typography.titleMedium)
+                        } ?: run {
+                            if (selectedRepoId == null && browsingAlbumId == null) {
+                                Text(text = "remoPhoto", style = MaterialTheme.typography.titleMedium)
                             }
                         }
                     },
@@ -153,6 +176,15 @@ fun AlbumListScreen(
                                 browsingAlbumName = null
                             }) {
                                 Text("← 返回")
+                            }
+                        } else if (selectedRepoId != null) {
+                            TextButton(onClick = {
+                                AppLogger.i(TAG, "点击返回按钮: 相册 → 仓库列表")
+                                browsingAlbumId = null
+                                browsingAlbumName = null
+                                viewModel.clearRepoSelection()
+                            }) {
+                                Text("← 仓库列表")
                             }
                         }
                     },
@@ -202,13 +234,16 @@ fun AlbumListScreen(
             }
         },
         bottomBar = {
-            val totalPages = viewModel.totalPages()
-            if (totalPages > 1) {
-                PageNavigator(
-                    currentPage = currentPage,
-                    totalPages = totalPages,
-                    onPageChange = { viewModel.goToPage(it) }
-                )
+            // 仅在相册根级（非仓库列表、非子相册浏览、非空）时显示分页
+            if (showAlbumLevel && browsingAlbumId == null) {
+                val totalPages = viewModel.totalPages()
+                if (totalPages > 1) {
+                    PageNavigator(
+                        currentPage = currentPage,
+                        totalPages = totalPages,
+                        onPageChange = { viewModel.goToPage(it) }
+                    )
+                }
             }
         }
     ) { padding ->
@@ -245,37 +280,19 @@ fun AlbumListScreen(
                 }
             }
             else -> {
-                // 当前浏览层级：根级相册或子相册
-                val displayAlbums = if (browsingAlbumId != null) {
-                    // 查找指定相册的子相册
-                    findAlbumById(albumTree, browsingAlbumId!!)?.children ?: emptyList()
-                } else {
-                    albumTree
-                }
-
-                if (displayAlbums.isEmpty() && browsingAlbumId != null) {
-                    // 进入相册但没有子相册 → 跳转到图片网格
-                    LaunchedEffect(browsingAlbumId) {
-                        onAlbumClick(browsingAlbumId!!)
-                    }
-                }
-
-                // 动画过渡：browsingAlbumId 变化时使用 AnimatedContent
-                val contentKey = browsingAlbumId ?: 0L
-
-                AnimatedContent(
-                    targetState = contentKey,
-                    transitionSpec = {
-                        (fadeIn(animationSpec = tween(200)) +
-                            expandVertically(animationSpec = tween(250)))
-                            .togetherWith(
-                                fadeOut(animationSpec = tween(150)) +
-                                    shrinkVertically(animationSpec = tween(200))
-                            )
-                    },
-                    label = "album_content"
-                ) { _ ->
-                    if (isGridView) {
+                if (showRepoLevel) {
+                    // ===== 仓库列表视图 =====
+                    val displayRepos = repoList
+                    if (displayRepos.isEmpty()) {
+                        EmptyStateView(
+                            icon = "📁",
+                            title = "暂无仓库",
+                            subtitle = "请先添加图片文件夹",
+                            actionLabel = "添加仓库",
+                            onAction = onRepositoryManagerClick,
+                            modifier = Modifier.padding(padding)
+                        )
+                    } else if (isGridView) {
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(2),
                             modifier = Modifier
@@ -286,57 +303,104 @@ fun AlbumListScreen(
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             items(
-                                displayAlbums,
+                                displayRepos,
                                 key = { it.id },
-                                contentType = { _ -> "album_grid_card" }
-                            ) { album ->
-                                AlbumCard(
-                                    album = album,
+                                contentType = { _ -> "repo_grid_card" }
+                            ) { repo ->
+                                RepoCard(
+                                    repo = repo,
                                     compact = true,
-                                    selected = album.id in selectedAlbumIds,
-                                    selectionMode = selectionMode,
                                     onClick = {
-                                        if (selectionMode) {
-                                            viewModel.toggleSelection(album.id)
-                                        } else {
-                                            AppLogger.i(TAG, "点击相册卡片(网格): id=${album.id}, name=${album.name}, children=${album.children.size}")
-                                            if (album.children.isNotEmpty()) {
-                                                browsingAlbumId = album.id
-                                                browsingAlbumName = album.name
-                                            } else {
-                                                onAlbumClick(album.id)
-                                            }
-                                        }
-                                    },
-                                    onLongClick = { viewModel.enterSelectionMode(album.id) }
+                                        browsingAlbumId = null
+                                        browsingAlbumName = null
+                                        viewModel.selectRepo(repo.id, repo.name)
+                                    }
                                 )
                             }
                         }
                     } else {
-                        val listState = rememberLazyListState()
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(padding),
+                            contentPadding = PaddingValues(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            items(
+                                displayRepos,
+                                key = { it.id },
+                                contentType = { _ -> "repo_list_card" }
+                            ) { repo ->
+                                RepoCard(
+                                    repo = repo,
+                                    compact = false,
+                                    onClick = {
+                                        browsingAlbumId = null
+                                        browsingAlbumName = null
+                                        viewModel.selectRepo(repo.id, repo.name)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    // ===== 相册列表视图 =====
+                    // 根级用分页数据，子相册用全量子相册
+                    val displayAlbums = if (browsingAlbumId != null) {
+                        remember(albumTree, browsingAlbumId) {
+                            findAlbumById(albumTree, browsingAlbumId!!)?.children ?: emptyList()
+                        }
+                    } else {
+                        pagedAlbums
+                    }
 
-                        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-                            LazyColumn(
-                                state = listState,
-                                modifier = Modifier.fillMaxSize(),
+                    if (displayAlbums.isEmpty() && browsingAlbumId != null) {
+                        // 进入相册但没有子相册 → 跳转到图片网格
+                        LaunchedEffect(browsingAlbumId) {
+                            onAlbumClick(browsingAlbumId!!)
+                        }
+                    }
+
+                    // 动画过渡
+                    val contentKey = browsingAlbumId ?: 0L
+
+                    AnimatedContent(
+                        targetState = contentKey,
+                        transitionSpec = {
+                            (fadeIn(animationSpec = tween(200)) +
+                                expandVertically(animationSpec = tween(250)))
+                                .togetherWith(
+                                    fadeOut(animationSpec = tween(150)) +
+                                        shrinkVertically(animationSpec = tween(200))
+                                )
+                        },
+                        label = "album_content"
+                    ) { _ ->
+                        if (isGridView) {
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(2),
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(padding),
                                 contentPadding = PaddingValues(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 items(
                                     displayAlbums,
                                     key = { it.id },
-                                    contentType = { _ -> "album_list_card" }
+                                    contentType = { _ -> "album_grid_card" }
                                 ) { album ->
                                     AlbumCard(
                                         album = album,
-                                        compact = false,
+                                        compact = true,
                                         selected = album.id in selectedAlbumIds,
                                         selectionMode = selectionMode,
                                         onClick = {
                                             if (selectionMode) {
                                                 viewModel.toggleSelection(album.id)
                                             } else {
-                                                AppLogger.i(TAG, "点击相册卡片(列表): id=${album.id}, name=${album.name}, children=${album.children.size}")
+                                                AppLogger.i(TAG, "点击相册卡片(网格): id=${album.id}, name=${album.name}, children=${album.children.size}")
                                                 if (album.children.isNotEmpty()) {
                                                     browsingAlbumId = album.id
                                                     browsingAlbumName = album.name
@@ -349,18 +413,56 @@ fun AlbumListScreen(
                                     )
                                 }
                             }
+                        } else {
+                            val listState = rememberLazyListState()
 
-                            // 快速滚动指示器（仅当相册数 > 20 时显示）
-                            if (displayAlbums.size > 20) {
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.CenterEnd)
-                                        .fillMaxHeight()
+                            Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+                                LazyColumn(
+                                    state = listState,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    ScrollPositionIndicator(
-                                        listState = listState,
-                                        itemCount = displayAlbums.size
-                                    )
+                                    items(
+                                        displayAlbums,
+                                        key = { it.id },
+                                        contentType = { _ -> "album_list_card" }
+                                    ) { album ->
+                                        AlbumCard(
+                                            album = album,
+                                            compact = false,
+                                            selected = album.id in selectedAlbumIds,
+                                            selectionMode = selectionMode,
+                                            onClick = {
+                                                if (selectionMode) {
+                                                    viewModel.toggleSelection(album.id)
+                                                } else {
+                                                    AppLogger.i(TAG, "点击相册卡片(列表): id=${album.id}, name=${album.name}, children=${album.children.size}")
+                                                    if (album.children.isNotEmpty()) {
+                                                        browsingAlbumId = album.id
+                                                        browsingAlbumName = album.name
+                                                    } else {
+                                                        onAlbumClick(album.id)
+                                                    }
+                                                }
+                                            },
+                                            onLongClick = { viewModel.enterSelectionMode(album.id) }
+                                        )
+                                    }
+                                }
+
+                                // 快速滚动指示器（仅当相册数 > 20 时显示）
+                                if (displayAlbums.size > 20) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.CenterEnd)
+                                            .fillMaxHeight()
+                                    ) {
+                                        ScrollPositionIndicator(
+                                            listState = listState,
+                                            itemCount = displayAlbums.size
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -424,6 +526,108 @@ fun AlbumListScreen(
 }
 
 private const val TAG = "AlbumList"
+
+/**
+ * 仓库卡片组件（用于仓库列表视图）
+ *
+ * 网格模式：大卡片，含文件夹图标和统计信息
+ * 列表模式：紧凑横排布局
+ */
+@Composable
+private fun RepoCard(
+    repo: RepositoryEntity,
+    compact: Boolean,
+    onClick: () -> Unit
+) {
+    val lastScanText = if (repo.lastScanTime == 0L) "未扫描"
+    else java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
+        .format(java.util.Date(repo.lastScanTime))
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        if (compact) {
+            // 双列网格：纵向布局，居中显示
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "📁",
+                    style = MaterialTheme.typography.displaySmall
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = repo.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "${repo.imageCount} 张图片",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = lastScanText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+            }
+        } else {
+            // 单列列表：横排布局
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "📁",
+                    style = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.padding(end = 12.dp)
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = repo.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Text(
+                            text = "${repo.imageCount} 张图片",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = lastScanText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Text(
+                    text = "›",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
 
 /**
  * 递归查找相册

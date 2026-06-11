@@ -12,8 +12,11 @@ import com.remophoto.data.repository.AlbumRepository
 import com.remophoto.data.repository.ImageRepository
 import com.remophoto.data.repository.SettingsRepository
 import com.remophoto.util.AppLogger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 全屏浏览 ViewModel
@@ -44,8 +47,12 @@ class FullScreenViewModel(application: Application) : AndroidViewModel(applicati
     private val _scale = MutableStateFlow(1f)
     val scale: StateFlow<Float> = _scale.asStateFlow()
 
-    /** 记录每张图片的缩放状态（按索引） */
-    private val scaleMap = mutableMapOf<Int, Float>()
+    /** 记录每张图片的缩放状态（按索引），最多保留 50 条防止内存泄漏 */
+    private val scaleMap = object : LinkedHashMap<Int, Float>(50, 0.75f, false) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, Float>?): Boolean {
+            return size > 50
+        }
+    }
 
     // ===== UI 显隐 =====
 
@@ -61,6 +68,9 @@ class FullScreenViewModel(application: Application) : AndroidViewModel(applicati
     val playIntervalMs: StateFlow<Long> = _playIntervalMs.asStateFlow()
 
     private var currentAlbumId: Long = 0L
+
+    /** 当前加载协程，用于取消上一次未完成的加载 */
+    private var loadJob: Job? = null
 
     init {
         // 从设置中读取自动播放间隔
@@ -79,7 +89,8 @@ class FullScreenViewModel(application: Application) : AndroidViewModel(applicati
             _images.value = emptyList()
         }
         currentAlbumId = albumId
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             try {
                 // 读取相册自定义排序
                 val albumEntity = albumRepository.getAlbumById(albumId)
@@ -89,8 +100,10 @@ class FullScreenViewModel(application: Application) : AndroidViewModel(applicati
                 val effectiveSort = albumSortOrder ?: globalSortOrder
 
                 imageRepository.getImagesByAlbum(albumId).collect { entities ->
-                    val sorted = sortImageEntities(entities, effectiveSort)
-                    _images.value = sorted.map { it.toDomainModel() }
+                    val sorted = withContext(Dispatchers.Default) {
+                        sortImageEntities(entities, effectiveSort)
+                    }
+                    _images.value = sorted.map { ImageItem.fromEntity(it) }
                     AppLogger.d(TAG,
                         "全屏图片排序: albumId=$albumId, sort=${effectiveSort.displayName}, " +
                         "count=${sorted.size}"
@@ -214,23 +227,6 @@ class FullScreenViewModel(application: Application) : AndroidViewModel(applicati
             SortOrder.SIZE_ASC -> entities.sortedBy { it.fileSize }
             SortOrder.SIZE_DESC -> entities.sortedByDescending { it.fileSize }
         }
-    }
-
-    // ===== 映射 =====
-
-    private fun ImageEntity.toDomainModel(): ImageItem {
-        return ImageItem(
-            id = id,
-            filePath = filePath,
-            fileName = fileName,
-            fileSize = fileSize,
-            lastModified = lastModified,
-            mimeType = mimeType,
-            width = width,
-            height = height,
-            albumId = albumId,
-            repositoryId = repositoryId
-        )
     }
 
     companion object {

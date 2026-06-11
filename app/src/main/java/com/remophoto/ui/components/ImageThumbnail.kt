@@ -6,9 +6,13 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.BrokenImage
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -57,7 +61,7 @@ fun ImageThumbnail(
             val thumbRequest = remember(image.id, image.filePath) {
                 ImageRequest.Builder(ctx)
                     .data(image.filePath)
-                    .crossfade(true)
+                    .crossfade(false)
                     .size(300)
                     .precision(coil.size.Precision.INEXACT)  // 使用近似精度，更快解码
                     .memoryCacheKey(image.filePath + "_thumb")  // 精确缓存键
@@ -86,7 +90,12 @@ fun ImageThumbnail(
                             .background(Color.Black.copy(alpha = 0.1f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("📷", style = MaterialTheme.typography.titleLarge)
+                        Icon(
+                            imageVector = Icons.Outlined.Image,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.fillMaxSize(0.4f)
+                        )
                     }
                 },
                 error = {
@@ -96,7 +105,12 @@ fun ImageThumbnail(
                             .background(Color(0xFF3A1A1A)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("⚠️", style = MaterialTheme.typography.titleLarge)
+                        Icon(
+                            imageVector = Icons.Outlined.BrokenImage,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxSize(0.4f)
+                        )
                     }
                 }
             )

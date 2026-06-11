@@ -1,5 +1,6 @@
 package com.remophoto.ui.gallery
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -57,6 +58,9 @@ fun GalleryScreen(
     LaunchedEffect(albumId) {
         viewModel.loadAlbumAndImages(albumId)
     }
+
+    // 系统返回键：回到相册列表
+    BackHandler { onBack() }
 
     val displayName = album?.name ?: albumName
 

@@ -11,7 +11,8 @@ import androidx.room.PrimaryKey
 @Entity(
     tableName = "images",
     indices = [
-        Index("album_id"),
+        Index("file_path"),
+        Index("album_id", "last_modified"),
         Index("repository_id"),
         Index("last_modified")
     ]

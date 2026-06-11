@@ -2,12 +2,16 @@ package com.remophoto.data.local.entity
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
  * 根图片仓库实体
  */
-@Entity(tableName = "image_repositories")
+@Entity(
+    tableName = "image_repositories",
+    indices = [Index("uri_string")]
+)
 data class RepositoryEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
