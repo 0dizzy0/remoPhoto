@@ -29,6 +29,10 @@ class SettingsRepository(private val context: Context) {
         private val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
         private val KEY_DARK_MODE_TYPE = stringPreferencesKey("dark_mode_type")
         private val KEY_HIGH_CONTRAST = booleanPreferencesKey("high_contrast")
+        // Phase 4: 远程服务设置
+        private val KEY_HTTP_SERVER_ENABLED = booleanPreferencesKey("http_server_enabled")
+        private val KEY_HTTP_SERVER_PORT = intPreferencesKey("http_server_port")
+        private val KEY_DEVICE_NAME = stringPreferencesKey("device_name")
     }
 
     /** 默认排序方式 */
@@ -66,6 +70,23 @@ class SettingsRepository(private val context: Context) {
         prefs[KEY_HIGH_CONTRAST] ?: false
     }
 
+    // ===== Phase 4: 远程服务设置 =====
+
+    /** HTTP 服务是否开启 */
+    val httpServerEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_HTTP_SERVER_ENABLED] ?: false
+    }
+
+    /** HTTP 服务端口 */
+    val httpServerPort: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[KEY_HTTP_SERVER_PORT] ?: Constants.REMOTE_HTTP_PORT
+    }
+
+    /** 设备名称（mDNS 广播用） */
+    val deviceName: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_DEVICE_NAME] ?: android.os.Build.MODEL ?: "Android 设备"
+    }
+
     // ===== 写操作 =====
 
     suspend fun setDefaultSortOrder(order: SortOrder) {
@@ -94,5 +115,19 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setHighContrast(enabled: Boolean) {
         context.dataStore.edit { it[KEY_HIGH_CONTRAST] = enabled }
+    }
+
+    // ===== Phase 4: 远程服务设置写操作 =====
+
+    suspend fun setHttpServerEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_HTTP_SERVER_ENABLED] = enabled }
+    }
+
+    suspend fun setHttpServerPort(port: Int) {
+        context.dataStore.edit { it[KEY_HTTP_SERVER_PORT] = port }
+    }
+
+    suspend fun setDeviceName(name: String) {
+        context.dataStore.edit { it[KEY_DEVICE_NAME] = name }
     }
 }

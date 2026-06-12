@@ -10,7 +10,10 @@ import androidx.room.PrimaryKey
  */
 @Entity(
     tableName = "image_repositories",
-    indices = [Index("uri_string")]
+    indices = [
+        Index("uri_string"),
+        Index("remote_connection_id")
+    ]
 )
 data class RepositoryEntity(
     @PrimaryKey(autoGenerate = true)
@@ -25,6 +28,10 @@ data class RepositoryEntity(
 
     /** 仓库显示名称 */
     val name: String,
+
+    /** 远程连接 ID（null = 本地 SAF 仓库，非 null = 远程仓库） */
+    @ColumnInfo(name = "remote_connection_id")
+    val remoteConnectionId: Long? = null,
 
     /** 添加时间戳（毫秒） */
     @ColumnInfo(name = "added_time")

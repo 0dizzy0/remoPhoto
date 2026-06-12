@@ -4,7 +4,11 @@ import android.content.Context
 import android.net.Uri
 import android.os.Process
 import com.remophoto.data.local.AppDatabase
+import com.remophoto.data.local.entity.ConnectionStatus
+import com.remophoto.di.dependencies
 import com.remophoto.util.AppLogger
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlin.system.exitProcess
 import java.io.File
 import java.io.FileInputStream
@@ -16,7 +20,8 @@ import java.util.zip.ZipOutputStream
 /**
  * 数据库导入/导出工具
  *
- * 将 Room 数据库文件打包为 ZIP 通过 SAF 导出/导入。
+ * 将 Room 数据库文件 + DataStore 设置文件打包为 ZIP 通过 SAF 导出/导入。
+ * Phase 4 增强：导出包含 DataStore Preferences + remote_connections 表（凭据已清除）。
  * 导入前自动备份当前数据库，验证失败可回滚。
  *
  * 用法：
@@ -27,6 +32,11 @@ object DatabaseExporter {
 
     private const val TAG = "DatabaseExporter"
     private const val DB_NAME = "remophoto.db"
+    private const val DATASTORE_FILE = "settings.preferences_pb"
+
+    /** 导入导出结果事件 */
+    private val _events = MutableSharedFlow<ExportEvent>()
+    val events: SharedFlow<ExportEvent> = _events
 
     /**
      * 导出数据库到 SAF 目标 URI
@@ -40,32 +50,39 @@ object DatabaseExporter {
     fun exportDatabase(context: Context, destUri: Uri): Boolean {
         return try {
             val dbDir = context.getDatabasePath(DB_NAME).parentFile
-                ?: return logAndReturnFalse("数据库目录不存在")
+                ?: return failAndEmit("数据库目录不存在")
 
-            val dbFiles = listOfNotNull(
+            // DB 文件 + DataStore 设置文件
+            val datastoreFile = File(context.filesDir, "datastore/$DATASTORE_FILE")
+            val files = mutableListOf(
                 File(dbDir, DB_NAME),
-                File(dbDir, "$DB_NAME-wal").takeIf { it.exists() },
-                File(dbDir, "$DB_NAME-shm").takeIf { it.exists() }
-            )
+            ).apply {
+                File(dbDir, "$DB_NAME-wal").takeIf { it.exists() }?.let { add(it) }
+                File(dbDir, "$DB_NAME-shm").takeIf { it.exists() }?.let { add(it) }
+                if (datastoreFile.exists()) add(datastoreFile)
+            }
 
-            AppLogger.i(TAG, "开始导出数据库: ${dbFiles.size} 个文件 → $destUri")
+            AppLogger.i(TAG, "开始导出: ${files.size} 个文件 → $destUri")
 
             context.contentResolver.openOutputStream(destUri)?.use { outputStream ->
                 ZipOutputStream(outputStream).use { zipOut ->
-                    for (file in dbFiles) {
+                    for (file in files) {
                         if (!file.exists()) continue
-                        zipOut.putNextEntry(ZipEntry(file.name))
+                        val entryName = if (file == datastoreFile) "settings/$DATASTORE_FILE" else file.name
+                        zipOut.putNextEntry(ZipEntry(entryName))
                         FileInputStream(file).use { it.copyTo(zipOut) }
                         zipOut.closeEntry()
-                        AppLogger.d(TAG, "已打包: ${file.name} (${file.length()} bytes)")
+                        AppLogger.d(TAG, "已打包: $entryName (${file.length()} bytes)")
                     }
                 }
-            } ?: return logAndReturnFalse("无法打开输出流")
+            } ?: return failAndEmit("无法打开输出流")
 
-            AppLogger.i(TAG, "数据库导出成功")
+            AppLogger.i(TAG, "导出成功 (含 DataStore 设置)")
+            _events.tryEmit(ExportEvent.Success("导出成功"))
             true
         } catch (e: Exception) {
-            AppLogger.e(TAG, "数据库导出失败", e)
+            AppLogger.e(TAG, "导出失败", e)
+            _events.tryEmit(ExportEvent.Error("导出失败: ${e.message}"))
             false
         }
     }
@@ -87,7 +104,7 @@ object DatabaseExporter {
     fun importDatabase(context: Context, sourceUri: Uri): Boolean {
         return try {
             val dbDir = context.getDatabasePath(DB_NAME).parentFile
-                ?: return logAndReturnFalse("数据库目录不存在")
+                ?: return failAndEmit("数据库目录不存在")
 
             // 步骤 0：关闭 Room 数据库实例（释放 WAL 文件锁）
             AppLogger.i(TAG, "关闭当前 Room 数据库实例")
@@ -160,17 +177,23 @@ object DatabaseExporter {
             // Room 使用 WAL 模式，主 .db 文件可能不包含最新数据（如封面更新）。
             // 导入时我们已将完整的 WAL/SHM 一起解压，Room 重启后会自动恢复 WAL 中的未 checkpoint 数据。
 
-            AppLogger.i(TAG, "数据库导入成功，备份已清理。即将重启进程以加载新数据库。")
+            // Phase 4: 导入后恢复 DataStore 设置文件
+            restoreDataStore(context, dbDir)
+
+            // Phase 4: 导入后标记所有远程连接为 DISCONNECTED（凭据不可恢复，需用户重新输入）
+            markRemoteConnectionsDisconnected(context)
+
+            AppLogger.i(TAG, "导入成功（含 DataStore），清理备份。即将重启进程。")
 
             // 重启 App 进程，让 Room 重新初始化并使用导入的数据库
             Process.killProcess(Process.myPid())
-            // killProcess 后正常不会执行到这里，exitProcess 作为兜底
             exitProcess(0)
 
             @Suppress("UNREACHABLE_CODE")
             true
         } catch (e: Exception) {
             AppLogger.e(TAG, "数据库导入失败", e)
+            _events.tryEmit(ExportEvent.Error("导入失败: ${e.message}"))
             false
         }
     }
@@ -207,8 +230,82 @@ object DatabaseExporter {
         return false
     }
 
-    private fun logAndReturnFalse(msg: String): Boolean {
+    private fun failAndEmit(msg: String): Boolean {
         AppLogger.w(TAG, msg)
+        _events.tryEmit(ExportEvent.Error(msg))
         return false
     }
+
+    /**
+     * Phase 4: 恢复 DataStore 设置文件
+     */
+    private fun restoreDataStore(context: Context, dbDir: File) {
+        try {
+            val zipDatastoreFile = File(dbDir, "settings/$DATASTORE_FILE")
+            val targetDir = File(context.filesDir, "datastore")
+            val targetFile = File(targetDir, DATASTORE_FILE)
+
+            if (zipDatastoreFile.exists()) {
+                targetDir.mkdirs()
+                FileInputStream(zipDatastoreFile).use { input ->
+                    FileOutputStream(targetFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                AppLogger.i(TAG, "DataStore 设置已恢复: ${targetFile.length()} bytes")
+            } else {
+                // ZIP 中可能没有 settings 目录（旧版导出），DataStore 存入 dbDir 根目录
+                val flatFile = File(dbDir, DATASTORE_FILE)
+                if (flatFile.exists()) {
+                    val destDir = File(context.filesDir, "datastore")
+                    destDir.mkdirs()
+                    FileInputStream(flatFile).use { input ->
+                        FileOutputStream(File(destDir, DATASTORE_FILE)).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    AppLogger.i(TAG, "DataStore 设置已从根目录恢复")
+                } else {
+                    AppLogger.d(TAG, "ZIP 中无 DataStore 设置文件，跳过恢复")
+                }
+            }
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "恢复 DataStore 设置失败", e)
+        }
+    }
+
+    /**
+     * Phase 4: 导入后标记所有远程连接为 DISCONNECTED
+     *
+     * 远程凭据存储在 Android Keystore 中，跨设备不可恢复。
+     * 导入后将所有连接状态重置，用户需手动重新输入凭据。
+     */
+    private fun markRemoteConnectionsDisconnected(context: Context) {
+        try {
+            val deps = context.dependencies
+            val connections = kotlinx.coroutines.runBlocking {
+                deps.remoteConnectionDao.getAllConnectionsList()
+            }
+            for (conn in connections) {
+                kotlinx.coroutines.runBlocking {
+                    deps.remoteConnectionDao.updateStatus(conn.id, ConnectionStatus.DISCONNECTED)
+                }
+                // 清除旧 Keystore 凭据（原设备的加密密钥无法跨设备恢复）
+                try {
+                    deps.keyStoreManager.deleteCredential(conn.id)
+                } catch (_: Exception) {}
+            }
+            AppLogger.i(TAG, "已标记 ${connections.size} 个远程连接为 DISCONNECTED")
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "标记远程连接状态失败", e)
+        }
+    }
+}
+
+/**
+ * 导入导出结果事件
+ */
+sealed class ExportEvent {
+    data class Success(val message: String) : ExportEvent()
+    data class Error(val message: String) : ExportEvent()
 }

@@ -1,0 +1,192 @@
+package com.remophoto.data.server
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Intent
+import android.os.IBinder
+import androidx.core.app.NotificationCompat
+import com.remophoto.MainActivity
+import com.remophoto.R
+import com.remophoto.util.AppLogger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/**
+ * HTTP Server 前台 Service
+ *
+ * 保持 HTTP Server 在后台持续运行，防止被系统杀死。
+ * 通知栏显示"远程服务运行中"及当前连接地址。
+ */
+class HttpServerForegroundService : Service() {
+
+    companion object {
+        private const val TAG = "HttpServerForegroundService"
+        private const val CHANNEL_ID = "remote_server"
+        private const val CHANNEL_NAME = "远程服务"
+        private const val NOTIFICATION_ID = 2001
+        const val EXTRA_PORT = "port"
+        const val EXTRA_DEVICE_NAME = "device_name"
+        const val ACTION_STOP = "com.remophoto.action.STOP_SERVER"
+    }
+
+    private val scope = MainScope()
+    private var serverManager: HttpServerManager? = null
+    private var mdnsRegistrar: MdnsRegistrar? = null
+    private var wifiLockManager: WifiLockManager? = null
+    private var startJob: Job? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        createNotificationChannel()
+        AppLogger.d(TAG, "Service onCreate")
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when {
+            intent?.action == ACTION_STOP -> {
+                stopServer()
+            }
+            else -> {
+                val port = intent?.getIntExtra(EXTRA_PORT, 8080) ?: 8080
+                val deviceName = intent?.getStringExtra(EXTRA_DEVICE_NAME) ?: ""
+                startServer(port, deviceName)
+            }
+        }
+        return START_STICKY
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onDestroy() {
+        stopServer()
+        scope.cancel()
+        super.onDestroy()
+    }
+
+    private fun startServer(port: Int, deviceName: String) {
+        // 立即调用 startForeground，避免 ANR（必须在 5s 内调用）
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val startingNotification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("remoPhoto 远程服务")
+            .setContentText("正在启动...")
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentIntent(pendingIntent)
+            .build()
+        startForeground(NOTIFICATION_ID, startingNotification)
+
+        // 后台启动 HTTP Server + mDNS 注册
+        startJob = scope.launch {
+            try {
+                AppLogger.i(TAG, "═════ 启动远程服务 ═════")
+                AppLogger.i(TAG, "[步骤1/4] 创建 HttpServerManager...")
+                val mgr = HttpServerManager(this@HttpServerForegroundService)
+                serverManager = mgr
+
+                AppLogger.i(TAG, "[步骤2/4] 启动 HTTP Server (port=$port, deviceName=$deviceName)...")
+                val addr = withContext(Dispatchers.IO) {
+                    mgr.start(port, deviceName)
+                }
+
+                if (addr != null) {
+                    AppLogger.i(TAG, "[步骤2/4] ✅ HTTP Server 启动成功: $addr")
+
+                    // 注册 mDNS 服务 + 获取 MulticastLock
+                    try {
+                        AppLogger.i(TAG, "[步骤3/4] 获取 WiFi 锁...")
+                        val wlm = WifiLockManager(this@HttpServerForegroundService)
+                        wifiLockManager = wlm
+                        wlm.acquireMulticastLock()
+                        wlm.acquireWifiLock()
+                        AppLogger.i(TAG, "[步骤3/4] ✅ WiFi 锁已获取")
+
+                        AppLogger.i(TAG, "[步骤4/4] 注册 mDNS 服务...")
+                        val registrar = MdnsRegistrar(this@HttpServerForegroundService)
+                        mdnsRegistrar = registrar
+                        val registered = withContext(Dispatchers.IO) {
+                            registrar.register(port, deviceName.ifEmpty { "remoPhoto" })
+                        }
+                        if (registered) {
+                            AppLogger.i(TAG, "[步骤4/4] ✅ mDNS 注册成功")
+                        } else {
+                            AppLogger.w(TAG, "[步骤4/4] ⚠️ mDNS 注册失败（HTTP Server 仍在运行，可手动 IP 连接）")
+                        }
+                    } catch (e: Exception) {
+                        AppLogger.e(TAG, "[步骤3-4] ❌ mDNS 注册异常", e)
+                    }
+
+                    // 更新通知为运行状态
+                    val stopIntent = PendingIntent.getService(
+                        this@HttpServerForegroundService, 1,
+                        Intent(this@HttpServerForegroundService, HttpServerForegroundService::class.java).apply {
+                            action = ACTION_STOP
+                        },
+                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                    )
+                    val runningNotification = NotificationCompat.Builder(this@HttpServerForegroundService, CHANNEL_ID)
+                        .setContentTitle("remoPhoto 远程服务运行中")
+                        .setContentText("http://$addr  — 点击管理")
+                        .setSmallIcon(R.drawable.ic_launcher_foreground)
+                        .setOngoing(true)
+                        .setPriority(NotificationCompat.PRIORITY_LOW)
+                        .setContentIntent(pendingIntent)
+                        .addAction(android.R.drawable.ic_media_pause, "停止", stopIntent)
+                        .build()
+                    val nm = getSystemService(NotificationManager::class.java)
+                    nm.notify(NOTIFICATION_ID, runningNotification)
+
+                    AppLogger.i(TAG, "前台 Service 已启动: http://$addr (mDNS registered)")
+                } else {
+                    AppLogger.w(TAG, "HTTP Server 启动失败，停止 Service")
+                    stopSelf()
+                }
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Service startServer 异常", e)
+                stopSelf()
+            }
+        }
+    }
+
+    private fun stopServer() {
+        AppLogger.i(TAG, "═════ 停止远程服务 ═════")
+        startJob?.cancel()
+        try {
+            AppLogger.d(TAG, "停止 HTTP Server...")
+            serverManager?.stop()
+            serverManager = null
+        } catch (_: Exception) {}
+        try {
+            AppLogger.d(TAG, "注销 mDNS 服务...")
+            mdnsRegistrar?.unregister()
+            mdnsRegistrar = null
+        } catch (_: Exception) {}
+        try {
+            AppLogger.d(TAG, "释放 WiFi 锁...")
+            wifiLockManager?.releaseAll()
+            wifiLockManager = null
+        } catch (_: Exception) {}
+        try {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } catch (_: Exception) {}
+        AppLogger.i(TAG, "前台 Service 已停止")
+    }
+
+    private fun createNotificationChannel() {
+        val channel = NotificationChannel(
+            CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW
+        ).apply { description = "remoPhoto 远程图片服务运行状态" }
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(channel)
+    }
+}

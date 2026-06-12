@@ -87,6 +87,12 @@ dependencies {
     // DataStore — 偏好设置持久化
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
+    // Phase 4: NanoHTTPd — 轻量 HTTP Server（远程仓库服务端）
+    implementation("org.nanohttpd:nanohttpd:2.3.1")
+
+    // Phase 4: JmDNS — mDNS 服务注册与发现
+    implementation("org.jmdns:jmdns:3.5.9")
+
     // SplashScreen
     implementation("androidx.core:core-splashscreen:1.0.1")
 

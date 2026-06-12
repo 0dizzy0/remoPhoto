@@ -7,11 +7,13 @@ import androidx.room.RoomDatabase
 import com.remophoto.data.local.dao.AlbumDao
 import com.remophoto.data.local.dao.CategoryDao
 import com.remophoto.data.local.dao.ImageDao
+import com.remophoto.data.local.dao.RemoteConnectionDao
 import com.remophoto.data.local.dao.RepositoryDao
 import com.remophoto.data.local.entity.AlbumCategoryCrossRef
 import com.remophoto.data.local.entity.AlbumEntity
 import com.remophoto.data.local.entity.CategoryEntity
 import com.remophoto.data.local.entity.ImageEntity
+import com.remophoto.data.local.entity.RemoteConnectionEntity
 import com.remophoto.data.local.entity.RepositoryEntity
 import com.remophoto.data.local.entity.UserEntity
 import com.remophoto.data.local.entity.UserRepositoryAccess
@@ -29,11 +31,12 @@ import com.remophoto.data.local.entity.UserRepositoryAccess
         AlbumEntity::class,
         CategoryEntity::class,
         AlbumCategoryCrossRef::class,
+        RemoteConnectionEntity::class,
         // P3 远期表
         UserEntity::class,
         UserRepositoryAccess::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -42,6 +45,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun imageDao(): ImageDao
     abstract fun albumDao(): AlbumDao
     abstract fun categoryDao(): CategoryDao
+    abstract fun remoteConnectionDao(): RemoteConnectionDao
 
     companion object {
         private const val DATABASE_NAME = "remophoto.db"
@@ -78,7 +82,7 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 DATABASE_NAME
             )
-                .addMigrations(Migrations.MIGRATION_1_2)
+                .addMigrations(Migrations.MIGRATION_1_2, Migrations.MIGRATION_2_3)
                 .build()
         }
     }

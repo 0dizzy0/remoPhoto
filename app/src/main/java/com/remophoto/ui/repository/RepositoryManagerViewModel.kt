@@ -115,7 +115,7 @@ class RepositoryManagerViewModel(application: Application) : AndroidViewModel(ap
     }
 
     /**
-     * 删除仓库
+     * 删除仓库（同时清理远程连接和凭据）
      */
     fun deleteRepository(repoId: Long) {
         val manager = repositoryManager ?: return
@@ -123,7 +123,30 @@ class RepositoryManagerViewModel(application: Application) : AndroidViewModel(ap
             try {
                 _isLoading.value = true
                 _errorMessage.value = null
+
+                // Phase 4: 删除前检查是否为远程仓库，清理关联数据
+                val repo = manager.getRepositoryById(repoId)
+                val connId = repo?.remoteConnectionId
+                if (connId != null) {
+                    AppLogger.i(TAG, "删除远程仓库: repoId=$repoId, connId=$connId")
+                    // 清理 Keystore 凭据
+                    try {
+                        container.keyStoreManager.deleteCredential(connId)
+                        AppLogger.d(TAG, "已删除 Keystore 凭据: connId=$connId")
+                    } catch (e: Exception) {
+                        AppLogger.w(TAG, "删除 Keystore 凭据失败: $e")
+                    }
+                    // 删除远程连接记录
+                    try {
+                        container.remoteConnectionDao.deleteById(connId)
+                        AppLogger.d(TAG, "已删除 RemoteConnection: connId=$connId")
+                    } catch (e: Exception) {
+                        AppLogger.w(TAG, "删除 RemoteConnection 失败: $e")
+                    }
+                }
+
                 manager.deleteRepository(repoId)
+                AppLogger.i(TAG, "仓库已删除: repoId=$repoId, isRemote=${connId != null}")
             } catch (e: Exception) {
                 _errorMessage.value = "删除仓库失败: ${e.message}"
             } finally {

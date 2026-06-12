@@ -7,6 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * Room 数据库迁移定义
  *
  * 版本 1 → 2: 添加查询性能索引
+ * 版本 2 → 3: 新增远程连接支持（remote_connections 表 + RepositoryEntity 扩展）
  */
 object Migrations {
 
@@ -41,6 +42,58 @@ object Migrations {
             db.execSQL(
                 "CREATE INDEX IF NOT EXISTS index_image_repositories_uri_string " +
                     "ON image_repositories (uri_string)"
+            )
+        }
+    }
+
+    /**
+     * v2 → v3: 新增远程连接支持
+     *
+     * 1. 创建 remote_connections 表（存储远程连接元信息）
+     * 2. image_repositories 新增 remote_connection_id 列（FK → remote_connections）
+     * 3. 为 remote_connection_id 创建索引
+     *
+     * 纯增量迁移，无破坏性操作。
+     */
+    val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 1. 创建 remote_connections 表
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS remote_connections (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    type TEXT NOT NULL,
+                    host TEXT NOT NULL,
+                    port INTEGER NOT NULL,
+                    display_name TEXT NOT NULL,
+                    share_name TEXT,
+                    username TEXT,
+                    added_time INTEGER NOT NULL,
+                    last_connected_time INTEGER,
+                    status TEXT NOT NULL DEFAULT 'DISCONNECTED'
+                )
+                """.trimIndent()
+            )
+
+            // 2. 创建 remote_connections 索引
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_remote_connections_host " +
+                    "ON remote_connections (host)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_remote_connections_status " +
+                    "ON remote_connections (status)"
+            )
+
+            // 3. image_repositories 新增 remote_connection_id 列（仅列，FK 由应用层维护）
+            db.execSQL(
+                "ALTER TABLE image_repositories ADD COLUMN remote_connection_id INTEGER"
+            )
+
+            // 4. 为 remote_connection_id 创建索引
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_image_repositories_remote_connection_id " +
+                    "ON image_repositories (remote_connection_id)"
             )
         }
     }

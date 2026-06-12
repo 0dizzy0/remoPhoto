@@ -167,11 +167,16 @@ fun RepositoryManagerScreen(
     // 删除确认对话框
     deleteConfirmRepoId?.let { repoId ->
         val repo = repositories.find { it.id == repoId }
+        val isRemote = repo?.remoteConnectionId != null
         AlertDialog(
             onDismissRequest = { deleteConfirmRepoId = null },
             title = { Text("确认删除") },
             text = {
-                Text("确定要删除仓库「${repo?.name ?: ""}」吗？\n\n此操作将同时删除该仓库下的所有图片索引和相册数据。")
+                if (isRemote) {
+                    Text("确定要删除远程仓库「${repo?.name ?: ""}」吗？\n\n此操作将同时删除该仓库下的所有图片索引和相册数据。远程连接凭据也将被清除。")
+                } else {
+                    Text("确定要删除仓库「${repo?.name ?: ""}」吗？\n\n此操作将同时删除该仓库下的所有图片索引和相册数据。\n\n⚠️ 不会删除存储中的原始图片文件。")
+                }
             },
             confirmButton = {
                 TextButton(
@@ -213,6 +218,8 @@ private fun RepositoryItem(
 ) {
     val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
 
+    val isRemote = repo.remoteConnectionId != null
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -229,13 +236,19 @@ private fun RepositoryItem(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = repo.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = if (isRemote) "🌐" else "📁",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = repo.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
 
                 // 扫描中指示器
                 if (isScanning) {
@@ -244,29 +257,13 @@ private fun RepositoryItem(
                         strokeWidth = 2.dp
                     )
                 }
-
-                // 权限状态指示
-                val isValid = try {
-                    // 简单判断：有路径信息则假定有效（不阻塞主线程做 IO 验证）
-                    !repo.uriString.isNullOrBlank()
-                } catch (e: Exception) {
-                    false
-                }
-                if (!isValid) {
-                    Icon(
-                        Icons.Default.Warning,
-                        contentDescription = "权限失效",
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
             }
 
             Spacer(modifier = Modifier.height(4.dp))
 
             // 路径
             Text(
-                text = repo.path ?: repo.uriString,
+                text = repo.uriString,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -281,14 +278,16 @@ private fun RepositoryItem(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 左侧：图片数量 + 扫描时间
+                // 左侧：图片数量 + 扫描时间（远程仓库显示"同步"）
                 Column {
                     Text(
                         text = "${repo.imageCount} 张图片",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        text = if (repo.lastScanTime > 0) {
+                        text = if (isRemote) {
+                            "远程仓库 · 点击自动同步"
+                        } else if (repo.lastScanTime > 0) {
                             "最后扫描: ${dateFormat.format(Date(repo.lastScanTime))}"
                         } else {
                             "未扫描"
@@ -298,48 +297,49 @@ private fun RepositoryItem(
                     )
                 }
 
-                // 右侧：操作按钮（始终三按钮：▶/⏸ | ⏹ | 🗑）
+                // 右侧：操作按钮
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    // 按钮1：播放/暂停切换（左）
-                    val isActive = isScanning && !isPaused
-                    IconButton(onClick = {
-                        when {
-                            isPaused -> onRescan()      // 暂停中 → resumeScan
-                            isScanning -> onPause()     // 运行中 → pauseScan
-                            else -> onRescan()          // 空闲 → startScan
-                        }
-                    }) {
-                        Icon(
-                            imageVector = when {
-                                isPaused -> Icons.Default.PlayArrow
-                                isScanning -> Icons.Default.Pause
-                                else -> Icons.Default.PlayArrow
-                            },
-                            contentDescription = when {
-                                isPaused -> "恢复扫描"
-                                isScanning -> "暂停扫描"
-                                else -> "开始扫描"
-                            },
-                            tint = when {
-                                isPaused -> MaterialTheme.colorScheme.primary
-                                isScanning -> MaterialTheme.colorScheme.tertiary
-                                else -> MaterialTheme.colorScheme.primary
+                    if (!isRemote) {
+                        // 本地仓库：▶/⏸ | ⏹ | 🗑
+                        val isActive = isScanning && !isPaused
+                        IconButton(onClick = {
+                            when {
+                                isPaused -> onRescan()
+                                isScanning -> onPause()
+                                else -> onRescan()
                             }
-                        )
+                        }) {
+                            Icon(
+                                imageVector = when {
+                                    isPaused -> Icons.Default.PlayArrow
+                                    isScanning -> Icons.Default.Pause
+                                    else -> Icons.Default.PlayArrow
+                                },
+                                contentDescription = when {
+                                    isPaused -> "恢复扫描"
+                                    isScanning -> "暂停扫描"
+                                    else -> "开始扫描"
+                                },
+                                tint = when {
+                                    isPaused -> MaterialTheme.colorScheme.primary
+                                    isScanning -> MaterialTheme.colorScheme.tertiary
+                                    else -> MaterialTheme.colorScheme.primary
+                                }
+                            )
+                        }
+                        IconButton(
+                            onClick = onCancelScan,
+                            enabled = isScanning
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Stop,
+                                contentDescription = "取消扫描",
+                                tint = if (isScanning) MaterialTheme.colorScheme.error
+                                       else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                            )
+                        }
                     }
-                    // 按钮2：取消扫描（中）— 方块停止图标
-                    IconButton(
-                        onClick = onCancelScan,
-                        enabled = isScanning
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Stop,
-                            contentDescription = "取消扫描",
-                            tint = if (isScanning) MaterialTheme.colorScheme.error
-                                   else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-                        )
-                    }
-                    // 按钮3：删除仓库（右）— 垃圾桶图标
+                    // 删除按钮（始终显示）
                     IconButton(onClick = onDelete) {
                         Icon(
                             imageVector = Icons.Default.Delete,
@@ -350,8 +350,8 @@ private fun RepositoryItem(
                 }
             }
 
-            // 扫描进度条（仅扫描中的仓库显示）
-            if (isScanning) {
+            // 扫描进度条（仅本地扫描中的仓库显示）
+            if (isScanning && !isRemote) {
                 Spacer(modifier = Modifier.height(8.dp))
                 LinearProgressIndicator(
                     progress = { scanProgress },

@@ -28,6 +28,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import com.remophoto.data.local.entity.ConnectionStatus
+import com.remophoto.ui.components.AddRemoteRepoDialog
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -85,6 +88,9 @@ fun AlbumListScreen(
 
     // 分类选择器弹窗
     var showCategoryPicker by remember { mutableStateOf(false) }
+
+    // Phase 4: 添加远程仓库对话框
+    var showAddRemoteDialog by remember { mutableStateOf(false) }
 
     // 外部传入的分类筛选参数
     LaunchedEffect(categoryId) {
@@ -282,64 +288,129 @@ fun AlbumListScreen(
             else -> {
                 if (showRepoLevel) {
                     // ===== 仓库列表视图 =====
-                    val displayRepos = repoList
-                    if (displayRepos.isEmpty()) {
-                        EmptyStateView(
-                            icon = "📁",
-                            title = "暂无仓库",
-                            subtitle = "请先添加图片文件夹",
-                            actionLabel = "添加仓库",
-                            onAction = onRepositoryManagerClick,
-                            modifier = Modifier.padding(padding)
-                        )
-                    } else if (isGridView) {
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(2),
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(padding),
-                            contentPadding = PaddingValues(8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            items(
-                                displayRepos,
-                                key = { it.id },
-                                contentType = { _ -> "repo_grid_card" }
-                            ) { repo ->
-                                RepoCard(
-                                    repo = repo,
-                                    compact = true,
-                                    onClick = {
-                                        browsingAlbumId = null
-                                        browsingAlbumName = null
-                                        viewModel.selectRepo(repo.id, repo.name)
+                    val localRepos = viewModel.localRepos()
+                    val remoteRepos = viewModel.remoteRepos()
+
+                    // 统一的 LazyColumn（始终显示，确保远程仓库添加入口可见）
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding),
+                        contentPadding = PaddingValues(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        // ===== 本地仓库 Section =====
+                        item { SectionHeader("本地仓库") }
+                        if (localRepos.isNotEmpty()) {
+                            if (isGridView) {
+                                items(
+                                    localRepos.chunked(2),
+                                    key = { it.firstOrNull()?.id ?: 0 }
+                                ) { row ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        row.forEach { repo ->
+                                            Box(modifier = Modifier.weight(1f)) {
+                                                RepoCard(repo = repo, compact = true, onClick = {
+                                                    browsingAlbumId = null; browsingAlbumName = null
+                                                    viewModel.selectRepo(repo.id, repo.name)
+                                                })
+                                            }
+                                        }
+                                        // 单数补齐
+                                        if (row.size == 1) { Spacer(Modifier.weight(1f)) }
                                     }
-                                )
+                                }
+                            } else {
+                                items(localRepos, key = { it.id }) { repo ->
+                                    RepoCard(repo = repo, compact = false, onClick = {
+                                        browsingAlbumId = null; browsingAlbumName = null
+                                        viewModel.selectRepo(repo.id, repo.name)
+                                    })
+                                }
+                            }
+                        } else {
+                            // 无本地仓库时显示提示 + 快速添加入口
+                            item {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 12.dp, horizontal = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        "暂无本地仓库",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    TextButton(onClick = onRepositoryManagerClick) {
+                                        Text("＋ 添加本地仓库")
+                                    }
+                                }
                             }
                         }
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(padding),
-                            contentPadding = PaddingValues(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            items(
-                                displayRepos,
-                                key = { it.id },
-                                contentType = { _ -> "repo_list_card" }
-                            ) { repo ->
-                                RepoCard(
-                                    repo = repo,
-                                    compact = false,
-                                    onClick = {
-                                        browsingAlbumId = null
-                                        browsingAlbumName = null
-                                        viewModel.selectRepo(repo.id, repo.name)
-                                    }
+
+                        // ===== 远程仓库 Section（始终显示） =====
+                        item {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(MaterialTheme.colorScheme.surface)
+                                    .padding(horizontal = 4.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "远程仓库",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.primary
                                 )
+                                TextButton(onClick = {
+                                    AppLogger.i(TAG, "点击添加远程仓库")
+                                    showAddRemoteDialog = true
+                                }) {
+                                    Text("＋ 添加")
+                                }
+                            }
+                        }
+                        if (remoteRepos.isEmpty()) {
+                            item {
+                                Text(
+                                    "点击上方「＋ 添加」连接局域网内的 remoPhoto 设备",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(12.dp)
+                                )
+                            }
+                        } else if (isGridView) {
+                            items(
+                                remoteRepos.chunked(2),
+                                key = { it.firstOrNull()?.id ?: 0 }
+                            ) { row ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    row.forEach { repo ->
+                                        Box(modifier = Modifier.weight(1f)) {
+                                            RemoteRepoCard(repo = repo, viewModel = viewModel, compact = true, onClick = {
+                                                browsingAlbumId = null; browsingAlbumName = null
+                                                viewModel.selectRepo(repo.id, repo.name)
+                                            })
+                                        }
+                                    }
+                                    if (row.size == 1) { Spacer(Modifier.weight(1f)) }
+                                }
+                            }
+                        } else {
+                            items(remoteRepos, key = { it.id }) { repo ->
+                                RemoteRepoCard(repo = repo, viewModel = viewModel, compact = false, onClick = {
+                                    browsingAlbumId = null; browsingAlbumName = null
+                                    viewModel.selectRepo(repo.id, repo.name)
+                                })
                             }
                         }
                     }
@@ -470,6 +541,14 @@ fun AlbumListScreen(
                 }
             }
         }
+    }
+
+    // Phase 4: 添加远程仓库对话框
+    if (showAddRemoteDialog) {
+        AddRemoteRepoDialog(
+            onDismiss = { showAddRemoteDialog = false },
+            onRepoAdded = { viewModel.refresh() }
+        )
     }
 
     // 分类选择器弹窗
@@ -627,6 +706,109 @@ private fun RepoCard(
             }
         }
     }
+}
+
+/**
+ * Phase 4: 远程仓库卡片组件（含连接状态指示）
+ */
+@Composable
+private fun RemoteRepoCard(
+    repo: RepositoryEntity,
+    viewModel: AlbumListViewModel,
+    compact: Boolean,
+    onClick: () -> Unit
+) {
+    val status = viewModel.getRemoteStatus(repo)
+    val statusColor = when (status) {
+        ConnectionStatus.CONNECTED -> androidx.compose.ui.graphics.Color(0xFF4CAF50)
+        ConnectionStatus.DISCONNECTED -> androidx.compose.ui.graphics.Color(0xFF9E9E9E)
+        ConnectionStatus.ERROR -> androidx.compose.ui.graphics.Color(0xFFF44336)
+    }
+    val statusText = when (status) {
+        ConnectionStatus.CONNECTED -> "已连接"
+        ConnectionStatus.DISCONNECTED -> "离线"
+        ConnectionStatus.ERROR -> "错误"
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        if (compact) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(text = "🌐", style = MaterialTheme.typography.displaySmall)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(statusColor)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = repo.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "${repo.imageCount} 张图片 · $statusText",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = "🌐", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(end = 12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(statusColor))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(text = repo.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "${repo.imageCount} 张图片 · $statusText",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Text(text = "›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/**
+ * Section 标题（本地仓库 / 远程仓库）
+ */
+@Composable
+private fun SectionHeader(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(horizontal = 4.dp, vertical = 8.dp)
+    )
 }
 
 /**

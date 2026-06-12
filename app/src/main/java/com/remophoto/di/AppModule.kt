@@ -6,9 +6,13 @@ import com.remophoto.data.local.AppDatabase
 import com.remophoto.data.local.dao.AlbumDao
 import com.remophoto.data.local.dao.CategoryDao
 import com.remophoto.data.local.dao.ImageDao
+import com.remophoto.data.local.dao.RemoteConnectionDao
 import com.remophoto.data.local.dao.RepositoryDao
+import com.remophoto.data.security.KeyStoreManager
+import com.remophoto.data.remote.RemoteHttpClient
 import com.remophoto.data.repository.AlbumRepository
 import com.remophoto.data.repository.ImageRepository
+import com.remophoto.data.repository.RemoteConnectionRepository
 import com.remophoto.data.repository.RepositoryManager
 import com.remophoto.data.repository.SettingsRepository
 import com.remophoto.data.scanner.FileScanner
@@ -17,6 +21,7 @@ import com.remophoto.domain.usecase.CategoryManager
 import com.remophoto.domain.usecase.CreateAlbumsUseCase
 import com.remophoto.domain.usecase.ScanImagesUseCase
 import com.remophoto.domain.usecase.SortImagesUseCase
+import com.remophoto.domain.usecase.SyncRemoteRepositoryUseCase
 import com.remophoto.util.ImageLoaderFactory
 import com.remophoto.util.PermissionHelper
 import coil.ImageLoader
@@ -43,6 +48,13 @@ class DependencyContainer(private val app: RemoPhotoApp) {
     val imageDao: ImageDao by lazy { database.imageDao() }
     val albumDao: AlbumDao by lazy { database.albumDao() }
     val categoryDao: CategoryDao by lazy { database.categoryDao() }
+    val remoteConnectionDao: RemoteConnectionDao by lazy { database.remoteConnectionDao() }
+
+    // ===== 安全 =====
+
+    val keyStoreManager: KeyStoreManager by lazy {
+        KeyStoreManager(app)
+    }
 
     // ===== Repository =====
 
@@ -54,6 +66,8 @@ class DependencyContainer(private val app: RemoPhotoApp) {
 
     val imageLoader: ImageLoader by lazy { ImageLoaderFactory.create(app) }
     val thumbnailImageLoader: ImageLoader by lazy { ImageLoaderFactory.createThumbnailLoader(app) }
+    val remoteThumbnailLoader: ImageLoader by lazy { ImageLoaderFactory.createRemoteThumbnailLoader(app) }
+    val remoteImageLoader: ImageLoader by lazy { ImageLoaderFactory.createRemoteImageLoader(app) }
     val fileScanner: FileScanner by lazy { FileScanner(app) }
 
     // ===== UseCase =====
@@ -71,6 +85,18 @@ class DependencyContainer(private val app: RemoPhotoApp) {
         CategoryManager(categoryDao)
     }
     val sortImagesUseCase: SortImagesUseCase by lazy { SortImagesUseCase() }
+
+    // ===== Phase 4: 远程仓库 =====
+
+    val remoteHttpClient: RemoteHttpClient by lazy { RemoteHttpClient() }
+
+    val remoteConnectionRepository: RemoteConnectionRepository by lazy {
+        RemoteConnectionRepository(remoteHttpClient, remoteConnectionDao)
+    }
+
+    val syncRemoteRepositoryUseCase: SyncRemoteRepositoryUseCase by lazy {
+        SyncRemoteRepositoryUseCase(albumDao, imageDao, repositoryDao, remoteConnectionRepository)
+    }
 
     // PermissionHelper 需要 Activity 实例，不在此处创建
     // 由各 Activity 自行创建和管理

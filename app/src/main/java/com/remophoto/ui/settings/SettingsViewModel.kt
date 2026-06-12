@@ -1,14 +1,18 @@
 package com.remophoto.ui.settings
 
 import android.app.Application
+import android.content.Intent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.remophoto.RemoPhotoApp
 import com.remophoto.data.repository.ImageRepository
 import com.remophoto.data.repository.SettingsRepository
+import com.remophoto.data.server.HttpServerForegroundService
+import com.remophoto.data.server.HttpServerManager
 import com.remophoto.domain.model.SortOrder
 import com.remophoto.util.AppLogger
 import kotlinx.coroutines.flow.*
@@ -57,6 +61,22 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _totalStorageSize = MutableStateFlow(0L)
     val totalStorageSize: StateFlow<Long> = _totalStorageSize.asStateFlow()
 
+    // Phase 4: 远程服务状态
+    private val _httpServerEnabled = MutableStateFlow(false)
+    val httpServerEnabled: StateFlow<Boolean> = _httpServerEnabled.asStateFlow()
+
+    private val _httpServerPort = MutableStateFlow(8080)
+    val httpServerPort: StateFlow<Int> = _httpServerPort.asStateFlow()
+
+    private val _deviceName = MutableStateFlow("")
+    val deviceName: StateFlow<String> = _deviceName.asStateFlow()
+
+    private val _serverRunning = MutableStateFlow(false)
+    val serverRunning: StateFlow<Boolean> = _serverRunning.asStateFlow()
+
+    private val _serverAddress = MutableStateFlow<String?>(null)
+    val serverAddress: StateFlow<String?> = _serverAddress.asStateFlow()
+
     // 导入/导出对话框
     var showExportDialog by mutableStateOf(false)
     var showImportDialog by mutableStateOf(false)
@@ -84,6 +104,27 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
         viewModelScope.launch {
             settingsRepository.highContrast.collect { _highContrast.value = it }
+        }
+        viewModelScope.launch {
+            settingsRepository.httpServerEnabled.collect { _httpServerEnabled.value = it }
+        }
+        viewModelScope.launch {
+            settingsRepository.httpServerPort.collect { _httpServerPort.value = it }
+        }
+        viewModelScope.launch {
+            settingsRepository.deviceName.collect { _deviceName.value = it }
+        }
+
+        // Phase 4: 恢复服务状态（若 DataStore 记录为已开启但 ViewModel 重建，自动启动服务）
+        viewModelScope.launch {
+            // 等待 httpServerEnabled 加载完毕
+            settingsRepository.httpServerEnabled.first().let { enabled ->
+                if (enabled && !_serverRunning.value) {
+                    AppLogger.i(TAG, "SettingsViewModel 重建，自动恢复远程服务")
+                    val context = getApplication<RemoPhotoApp>()
+                    startServer(context)
+                }
+            }
         }
 
         AppLogger.i(TAG, "SettingsViewModel 初始化完成")
@@ -156,6 +197,105 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             settingsRepository.setHighContrast(enabled)
             AppLogger.i(TAG, "高对比度已更新: $enabled")
+        }
+    }
+
+    // ===== Phase 4: 远程服务控制 =====
+
+    fun setHttpServerEnabled(enabled: Boolean) {
+        _httpServerEnabled.value = enabled
+        viewModelScope.launch {
+            settingsRepository.setHttpServerEnabled(enabled)
+            AppLogger.i(TAG, "HTTP Server 开关: $enabled")
+        }
+    }
+
+    fun setHttpServerPort(port: Int) {
+        _httpServerPort.value = port
+        viewModelScope.launch {
+            settingsRepository.setHttpServerPort(port)
+            AppLogger.i(TAG, "HTTP Server 端口: $port")
+        }
+    }
+
+    fun setDeviceName(name: String) {
+        _deviceName.value = name
+        viewModelScope.launch {
+            settingsRepository.setDeviceName(name)
+            AppLogger.i(TAG, "设备名称: $name")
+        }
+    }
+
+    fun toggleServer(context: android.content.Context) {
+        val app = context.applicationContext
+        if (_serverRunning.value) {
+            stopServer(app)
+            setHttpServerEnabled(false)
+        } else {
+            startServer(app)
+            setHttpServerEnabled(true)
+        }
+    }
+
+    private fun startServer(context: android.content.Context) {
+        val intent = Intent(context, HttpServerForegroundService::class.java).apply {
+            putExtra(HttpServerForegroundService.EXTRA_PORT, _httpServerPort.value)
+            putExtra(HttpServerForegroundService.EXTRA_DEVICE_NAME, _deviceName.value)
+        }
+        ContextCompat.startForegroundService(context, intent)
+        _serverRunning.value = true
+        AppLogger.i(TAG, "HTTP Server 前台 Service 已发送启动")
+    }
+
+    private fun stopServer(context: android.content.Context) {
+        val intent = Intent(context, HttpServerForegroundService::class.java).apply {
+            action = HttpServerForegroundService.ACTION_STOP
+        }
+        context.startService(intent)
+        _serverRunning.value = false
+        _serverAddress.value = null
+        AppLogger.i(TAG, "HTTP Server 前台 Service 已发送停止")
+    }
+
+    // ===== Phase 4: 远程缓存管理 =====
+
+    fun remoteThumbCacheSize(): String {
+        val context = getApplication<RemoPhotoApp>()
+        val dir = context.cacheDir.resolve("remote_thumb_cache")
+        return if (dir.exists()) formatFileSize(dirSize(dir)) else "空"
+    }
+
+    fun remoteImageCacheSize(): String {
+        val context = getApplication<RemoPhotoApp>()
+        val dir = context.cacheDir.resolve("remote_image_cache")
+        return if (dir.exists()) formatFileSize(dirSize(dir)) else "空"
+    }
+
+    fun clearRemoteCaches(context: android.content.Context) {
+        viewModelScope.launch {
+            try {
+                val thumbDir = context.cacheDir.resolve("remote_thumb_cache")
+                val imageDir = context.cacheDir.resolve("remote_image_cache")
+                thumbDir.deleteRecursively()
+                imageDir.deleteRecursively()
+                AppLogger.i(TAG, "远程缓存已清除")
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "清除远程缓存失败", e)
+            }
+        }
+    }
+
+    private fun dirSize(dir: java.io.File): Long {
+        return if (dir.isDirectory) dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+        else 0L
+    }
+
+    private fun formatFileSize(bytes: Long): String {
+        return when {
+            bytes < 1024 -> "$bytes B"
+            bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+            bytes < 1024 * 1024 * 1024 -> "${"%.1f".format(bytes / (1024.0 * 1024.0))} MB"
+            else -> "${"%.2f".format(bytes / (1024.0 * 1024.0 * 1024.0))} GB"
         }
     }
 

@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -73,6 +75,7 @@ fun SettingsScreen(
     var showSortMenu by remember { mutableStateOf(false) }
     var showIntervalMenu by remember { mutableStateOf(false) }
     var showPageCountMenu by remember { mutableStateOf(false) }
+    var showPortMenu by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -245,6 +248,75 @@ fun SettingsScreen(
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
+            // ===== 远程服务（Phase 4） =====
+            SettingsSectionHeader("远程服务")
+
+            val httpEnabled by viewModel.httpServerEnabled.collectAsState()
+            val httpPort by viewModel.httpServerPort.collectAsState()
+            val deviceName by viewModel.deviceName.collectAsState()
+            val serverRunning by viewModel.serverRunning.collectAsState()
+
+            // 开启/关闭开关
+            SettingsSwitchRow(
+                label = "允许远程访问",
+                description = if (serverRunning) "服务运行中，局域网设备可浏览本机相册" else "开启后同一 WiFi 下的设备可访问本机图片",
+                checked = serverRunning,
+                onCheckedChange = { viewModel.toggleServer(context) }
+            )
+
+            // 端口选择（仅在未运行时可修改）
+            Box {
+                SettingsRow(
+                    label = "服务端口",
+                    value = "$httpPort"
+                ) {
+                    if (!serverRunning) showPortMenu = true
+                }
+                DropdownMenu(
+                    expanded = showPortMenu,
+                    onDismissRequest = { showPortMenu = false }
+                ) {
+                    listOf(8080, 8081, 8082, 9090).forEach { port ->
+                        DropdownMenuItem(
+                            text = { Text("$port") },
+                            onClick = { viewModel.setHttpServerPort(port); showPortMenu = false }
+                        )
+                    }
+                }
+            }
+
+            // 设备名称（始终可见，运行中灰选不可编辑）
+            var editDeviceName by remember { mutableStateOf(deviceName) }
+            // 同步 DataStore 中的 deviceName 到编辑状态（处理持久化恢复）
+            LaunchedEffect(deviceName) {
+                if (editDeviceName != deviceName) {
+                    editDeviceName = deviceName
+                }
+            }
+            OutlinedTextField(
+                value = editDeviceName,
+                onValueChange = { editDeviceName = it },
+                label = { Text("设备名称") },
+                placeholder = { Text("用于局域网内识别本设备") },
+                singleLine = true,
+                enabled = !serverRunning,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                supportingText = if (serverRunning) {
+                    { Text("停止服务后可修改") }
+                } else null,
+                trailingIcon = {
+                    if (!serverRunning && editDeviceName != deviceName) {
+                        IconButton(onClick = { viewModel.setDeviceName(editDeviceName) }) {
+                            Icon(Icons.Default.Check, "保存")
+                        }
+                    }
+                }
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
             // ===== 存储 =====
             SettingsSectionHeader("存储空间")
 
@@ -257,6 +329,29 @@ fun SettingsScreen(
                 label = "占用空间",
                 value = formatFileSize(totalStorageSize)
             )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Phase 4: 远程缓存
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            SettingsSectionHeader("远程缓存")
+            SettingsInfoRow(
+                label = "缩略图缓存",
+                value = viewModel.remoteThumbCacheSize()
+            )
+            SettingsInfoRow(
+                label = "原图缓存",
+                value = viewModel.remoteImageCacheSize()
+            )
+            OutlinedButton(
+                onClick = {
+                    AppLogger.i(TAG, "点击清除远程缓存")
+                    viewModel.clearRemoteCaches(context)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("🗑 清除远程缓存")
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 

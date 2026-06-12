@@ -12,6 +12,9 @@ import com.remophoto.data.repository.AlbumRepository
 import com.remophoto.data.repository.ImageRepository
 import com.remophoto.data.repository.SettingsRepository
 import com.remophoto.domain.model.SortOrder
+import com.remophoto.domain.usecase.SyncRemoteRepositoryUseCase
+import com.remophoto.data.local.dao.RemoteConnectionDao
+import com.remophoto.data.local.dao.RepositoryDao
 import com.remophoto.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -30,6 +33,10 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     private val imageRepository: ImageRepository = container.imageRepository
     private val albumRepository: AlbumRepository = container.albumRepository
     private val settingsRepository: SettingsRepository = container.settingsRepository
+    // Phase 4: 远程仓库按需同步
+    private val remoteConnectionDao: RemoteConnectionDao = container.remoteConnectionDao
+    private val repositoryDao: RepositoryDao = container.repositoryDao
+    private val syncRemoteUseCase: SyncRemoteRepositoryUseCase = container.syncRemoteRepositoryUseCase
 
     // ===== 状态 =====
 
@@ -80,6 +87,30 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
 
+                // Phase 4: 检测远程相册，按需同步图片到本地 DB
+                if (albumEntity != null) {
+                    val repo = repositoryDao.getRepositoryById(albumEntity.repositoryId)
+                    val connId = repo?.remoteConnectionId
+                    if (connId != null) {
+                        val conn = remoteConnectionDao.getConnectionById(connId)
+                        if (conn != null) {
+                            // 从 directoryPath 解析远程相册 ID（格式: host:port/remoteAlbumId）
+                            val remoteAlbumId = albumEntity.directoryPath.substringAfterLast("/").toLongOrNull()
+                            if (remoteAlbumId != null) {
+                                AppLogger.i(TAG, "触发远程图片同步: album=$albumId, remoteId=$remoteAlbumId")
+                                syncRemoteUseCase.syncImages(
+                                    connection = conn,
+                                    localAlbumId = albumId,
+                                    remoteAlbumId = remoteAlbumId,
+                                    localRepoId = albumEntity.repositoryId,
+                                    host = conn.host,
+                                    port = conn.port
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // 确定排序方式：单相册设置 > 全局设置
                 val albumSortOrder = albumEntity?.sortOrder?.let { SortOrder.fromName(it) }
                 val globalSortOrder = settingsRepository.defaultSortOrder.first()
@@ -98,6 +129,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
             } catch (e: Exception) {
+                AppLogger.e(TAG, "加载相册图片失败: albumId=$albumId", e)
                 _isLoading.value = false
             }
         }

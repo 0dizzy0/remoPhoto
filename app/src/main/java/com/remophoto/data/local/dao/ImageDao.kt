@@ -22,6 +22,10 @@ interface ImageDao {
     @Query("SELECT * FROM images WHERE album_id = :albumId ORDER BY last_modified ASC")
     suspend fun getImagesByAlbumSorted(albumId: Long): List<ImageEntity>
 
+    /** 根据 ID 查询单张图片 */
+    @Query("SELECT * FROM images WHERE id = :imageId LIMIT 1")
+    suspend fun getImageById(imageId: Long): ImageEntity?
+
     /** 按仓库 ID 查询所有图片 */
     @Query("SELECT * FROM images WHERE repository_id = :repoId")
     suspend fun getImagesByRepository(repoId: Long): List<ImageEntity>

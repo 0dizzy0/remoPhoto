@@ -9,6 +9,8 @@ import com.remophoto.domain.model.SortOrder
 import com.remophoto.domain.usecase.CategoryManager
 import com.remophoto.data.local.entity.AlbumEntity
 import com.remophoto.data.local.entity.CategoryEntity
+import com.remophoto.data.local.entity.ConnectionStatus
+import com.remophoto.data.local.entity.RemoteConnectionEntity
 import com.remophoto.data.local.entity.RepositoryEntity
 import com.remophoto.data.repository.AlbumRepository
 import com.remophoto.data.local.dao.RepositoryDao
@@ -32,6 +34,9 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
     private val repositoryDao: RepositoryDao = container.repositoryDao
     private val settingsRepository: SettingsRepository = container.settingsRepository
     private val categoryManager: CategoryManager = container.categoryManager
+    // Phase 4: 远程仓库
+    private val remoteConnectionDao = container.remoteConnectionDao
+    private val syncRemoteUseCase = container.syncRemoteRepositoryUseCase
 
     // ===== 状态 =====
 
@@ -93,6 +98,11 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
     private val _selectedRepoName = MutableStateFlow<String?>(null)
     val selectedRepoName: StateFlow<String?> = _selectedRepoName.asStateFlow()
 
+    // Phase 4: 远程仓库状态
+    /** 远程连接状态映射 (connectionId -> ConnectionStatus) */
+    private val _remoteStatusMap = MutableStateFlow<Map<Long, ConnectionStatus>>(emptyMap())
+    val remoteStatusMap: StateFlow<Map<Long, ConnectionStatus>> = _remoteStatusMap.asStateFlow()
+
     // 加载任务引用，用于取消旧协程防止竞态覆盖
     private var loadJob: Job? = null
 
@@ -126,6 +136,27 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
                 _repoList.value = repos
             }
         }
+        // Phase 4: 加载远程连接状态
+        viewModelScope.launch {
+            remoteConnectionDao.getAllConnections().collect { connections ->
+                _remoteStatusMap.value = connections.associate { it.id to it.status }
+            }
+        }
+    }
+
+    /** 判断仓库是否为远程仓库 */
+    fun isRemoteRepo(repo: RepositoryEntity): Boolean = repo.remoteConnectionId != null
+
+    /** 本地仓库列表 */
+    fun localRepos(): List<RepositoryEntity> = _repoList.value.filter { it.remoteConnectionId == null }
+
+    /** 远程仓库列表 */
+    fun remoteRepos(): List<RepositoryEntity> = _repoList.value.filter { it.remoteConnectionId != null }
+
+    /** 获取远程仓库的连接状态 */
+    fun getRemoteStatus(repo: RepositoryEntity): ConnectionStatus {
+        val connId = repo.remoteConnectionId ?: return ConnectionStatus.DISCONNECTED
+        return _remoteStatusMap.value[connId] ?: ConnectionStatus.DISCONNECTED
     }
 
     fun loadAlbums() {
@@ -161,16 +192,53 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    /** 选择仓库，加载该仓库的相册 */
+    /** 选择仓库，加载该仓库的相册（本地或远程） */
     fun selectRepo(repoId: Long, repoName: String) {
-        // 先清空旧数据，避免闪现上一仓库的相册
         _albumTree.value = emptyList()
         _pagedAlbums.value = emptyList()
         _isLoading.value = true
         _selectedRepoId.value = repoId
         _selectedRepoName.value = repoName
         _currentPage.value = 1
-        loadAlbums()
+
+        // Phase 4: 检查是否为远程仓库，触发同步
+        val repo = _repoList.value.find { it.id == repoId }
+        if (repo?.remoteConnectionId != null) {
+            syncAndLoadRemoteAlbums(repo)
+        } else {
+            loadAlbums()
+        }
+    }
+
+    /**
+     * Phase 4: 同步远程仓库相册并加载
+     */
+    private fun syncAndLoadRemoteAlbums(repo: RepositoryEntity) {
+        if (repo.remoteConnectionId == null) return
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            try {
+                // 1. 同步远程数据到本地 DB
+                val conn = remoteConnectionDao.getConnectionById(repo.remoteConnectionId)
+                    ?: return@launch
+                val syncedCount = syncRemoteUseCase.syncAlbums(conn, repo.id)
+                AppLogger.i(TAG, "远程同步完成: ${syncedCount} 个相册, repo=${repo.name}")
+
+                // 2. 从本地 DB 加载已同步的相册（内联，避免 loadAlbums() 中的 loadJob?.cancel() 自取消）
+                val repoId = _selectedRepoId.value ?: return@launch
+                _isLoading.value = true
+                val rootAlbums = albumRepository.getRootAlbumsByRepository(repoId)
+                _allAlbums.value = rootAlbums
+                val tree = buildAlbumTree(rootAlbums)
+                _albumTree.value = tree
+                _isEmpty.value = tree.isEmpty()
+                _isLoading.value = false
+                recomputePagedAlbums()
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "远程仓库同步失败: ${repo.name}", e)
+                _isLoading.value = false
+            }
+        }
     }
 
     /** 返回仓库列表 */

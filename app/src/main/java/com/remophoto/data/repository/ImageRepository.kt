@@ -18,6 +18,9 @@ class ImageRepository(private val imageDao: ImageDao) {
     suspend fun getFirstImageByAlbum(albumId: Long) =
         imageDao.getFirstImageByAlbum(albumId)
 
+    suspend fun getImageById(imageId: Long) =
+        imageDao.getImageById(imageId)
+
     suspend fun getImageByPath(path: String) =
         imageDao.getImageByPath(path)
 
