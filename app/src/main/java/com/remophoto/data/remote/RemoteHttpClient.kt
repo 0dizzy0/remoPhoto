@@ -182,7 +182,8 @@ data class RemoteAlbumDto(
     val name: String,
     val imageCount: Int,
     val repositoryId: Long,
-    val parentAlbumId: Long? = null
+    val parentAlbumId: Long? = null,
+    val coverImageId: Long? = null
 ) {
     companion object {
         fun fromJson(json: JSONObject): RemoteAlbumDto = RemoteAlbumDto(
@@ -190,7 +191,13 @@ data class RemoteAlbumDto(
             name = json.getString("name"),
             imageCount = json.getInt("imageCount"),
             repositoryId = json.getLong("repositoryId"),
-            parentAlbumId = if (json.isNull("parentAlbumId")) null else json.getLong("parentAlbumId")
+            parentAlbumId = if (json.isNull("parentAlbumId")) null else json.getLong("parentAlbumId"),
+            // 可选字段保持新客户端连接旧服务端时的兼容性。
+            coverImageId = if (!json.has("coverImageId") || json.isNull("coverImageId")) {
+                null
+            } else {
+                json.getLong("coverImageId")
+            }
         )
     }
 }

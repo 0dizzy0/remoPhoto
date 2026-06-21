@@ -264,7 +264,8 @@ fun AlbumListScreen(
                     CircularProgressIndicator()
                 }
             }
-            isEmpty -> {
+            // 仓库层必须优先于全局相册空状态，否则零本地仓库时远程添加入口不可见。
+            !showRepoLevel && isEmpty -> {
                 if (activeFilterCategoryName != null) {
                     // 分类筛选结果为空
                     EmptyStateView(

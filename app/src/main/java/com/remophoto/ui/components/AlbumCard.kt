@@ -15,7 +15,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.remophoto.RemoPhotoApp
 import com.remophoto.domain.model.Album
 import com.remophoto.util.AppLogger
 
@@ -40,6 +43,20 @@ fun AlbumCard(
     onClick: () -> Unit = {},
     onLongClick: (() -> Unit)? = null
 ) {
+    val context = LocalContext.current
+    val app = context.applicationContext as RemoPhotoApp
+    val coverLoader = if (album.coverImagePath?.startsWith("http") == true) {
+        app.dependencyContainer.remoteThumbnailLoader
+    } else {
+        app.dependencyContainer.thumbnailImageLoader
+    }
+    val coverRequest = remember(album.id, album.coverImagePath) {
+        ImageRequest.Builder(context)
+            .data(album.coverImagePath)
+            .size(512)
+            .crossfade(false)
+            .build()
+    }
     val indentPadding = if (!compact) (album.depth * 24).dp else 0.dp
     val cardShape = MaterialTheme.shapes.medium
     // 预提取多选边框 Modifier，避免重组时重复创建
@@ -80,7 +97,8 @@ fun AlbumCard(
                     ) {
                         if (album.coverImagePath != null) {
                             AsyncImage(
-                                model = album.coverImagePath,
+                                model = coverRequest,
+                                imageLoader = coverLoader,
                                 contentDescription = "相册封面：${album.name}",
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop,
@@ -150,7 +168,8 @@ fun AlbumCard(
                     ) {
                         if (album.coverImagePath != null) {
                             AsyncImage(
-                                model = album.coverImagePath,
+                                model = coverRequest,
+                                imageLoader = coverLoader,
                                 contentDescription = "相册封面：${album.name}",
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop,

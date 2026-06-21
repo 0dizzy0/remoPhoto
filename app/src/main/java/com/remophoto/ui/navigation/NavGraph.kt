@@ -22,12 +22,14 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import com.remophoto.R
 import com.remophoto.ui.albumlist.AlbumListScreen
 import com.remophoto.ui.albumlist.AlbumListViewModel
 import com.remophoto.ui.gallery.GalleryScreen
 import com.remophoto.ui.viewer.FullScreenViewer
 import com.remophoto.ui.settings.SettingsScreen
+import com.remophoto.ui.settings.SettingsViewModel
 import com.remophoto.ui.categories.CategoryListScreen
 import com.remophoto.ui.albumlist.AlbumSettingsScreen
 import com.remophoto.data.repository.RepositoryManager
@@ -118,6 +120,8 @@ fun NavGraph(
 
     // 共享 ViewModel 实例（跨页面不需要共享的用独立实例）
     val albumListViewModel: AlbumListViewModel = viewModel()
+    // 提前初始化设置状态，避免首次点击设置 Tab 时集中读取 DataStore/缓存统计。
+    val settingsViewModel: SettingsViewModel = viewModel()
 
     Scaffold(
         bottomBar = {
@@ -131,8 +135,11 @@ fun NavGraph(
                             if (currentRoute?.startsWith(Screen.AlbumList.BASE_ROUTE) != true) {
                                 AppLogger.i(TAG, "📱 底部Tab点击: 相册列表 (from=$currentRoute)")
                                 navController.navigate(Screen.AlbumList.BASE_ROUTE) {
-                                    popUpTo(Screen.AlbumList.BASE_ROUTE) { inclusive = true }
+                                    popUpTo(navController.graph.findStartDestination().id) {
+                                        saveState = true
+                                    }
                                     launchSingleTop = true
+                                    restoreState = true
                                 }
                             }
                         }
@@ -145,6 +152,9 @@ fun NavGraph(
                             if (currentRoute != Screen.Settings.ROUTE) {
                                 AppLogger.i(TAG, "📱 底部Tab点击: 设置 (from=$currentRoute)")
                                 navController.navigate(Screen.Settings.ROUTE) {
+                                    popUpTo(navController.graph.findStartDestination().id) {
+                                        saveState = true
+                                    }
                                     launchSingleTop = true
                                     restoreState = true
                                 }
@@ -258,7 +268,8 @@ fun NavGraph(
                     onBack = {
                         AppLogger.i(TAG, "⬅ 返回: 设置 → 上一页")
                         navController.popBackStack()
-                    }
+                    },
+                    viewModel = settingsViewModel
                 )
             }
 

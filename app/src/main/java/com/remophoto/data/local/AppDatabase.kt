@@ -48,6 +48,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun remoteConnectionDao(): RemoteConnectionDao
 
     companion object {
+        const val SCHEMA_VERSION = 3
         private const val DATABASE_NAME = "remophoto.db"
 
         @Volatile

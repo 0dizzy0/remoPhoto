@@ -73,7 +73,7 @@ class DependencyContainer(private val app: RemoPhotoApp) {
     // ===== UseCase =====
 
     val scanImagesUseCase: ScanImagesUseCase by lazy {
-        ScanImagesUseCase(fileScanner, imageDao, albumDao, repositoryDao, albumCoverManager)
+        ScanImagesUseCase(database, fileScanner, imageDao, albumDao, repositoryDao, albumCoverManager)
     }
     val createAlbumsUseCase: CreateAlbumsUseCase by lazy {
         CreateAlbumsUseCase(albumDao, imageDao)
@@ -128,4 +128,3 @@ val RemoPhotoApp.dependencies: DependencyContainer
  */
 val Context.dependencies: DependencyContainer
     get() = (applicationContext as RemoPhotoApp).dependencyContainer
-

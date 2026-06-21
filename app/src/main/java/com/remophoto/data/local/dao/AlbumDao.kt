@@ -62,6 +62,10 @@ interface AlbumDao {
     @Query("UPDATE albums SET image_count = :count WHERE id = :albumId")
     suspend fun updateImageCount(albumId: Long, count: Int)
 
+    /** 更新父相册 ID（远程相册同步时将服务端 ID 映射为本地 ID） */
+    @Query("UPDATE albums SET parent_album_id = :parentAlbumId WHERE id = :albumId")
+    suspend fun updateParentAlbum(albumId: Long, parentAlbumId: Long?)
+
     /** 批量插入（冲突时替换） */
     @Upsert
     suspend fun upsertAll(albums: List<AlbumEntity>)

@@ -5,8 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
@@ -68,6 +67,8 @@ fun SettingsScreen(
     val useVolumeKeys by viewModel.useVolumeKeys.collectAsState()
     val totalImageCount by viewModel.totalImageCount.collectAsState()
     val totalStorageSize by viewModel.totalStorageSize.collectAsState()
+    val remoteThumbCacheSize by viewModel.remoteThumbCacheSize.collectAsState()
+    val remoteImageCacheSize by viewModel.remoteImageCacheSize.collectAsState()
 
     // 各下拉菜单展开状态
     var showThemeMenu by remember { mutableStateOf(false) }
@@ -92,14 +93,15 @@ fun SettingsScreen(
             )
         }
     ) { padding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(padding),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
+            item(key = "appearance") {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             // ===== 外观 =====
             SettingsSectionHeader("外观")
 
@@ -166,7 +168,11 @@ fun SettingsScreen(
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                }
+            }
 
+            item(key = "browse") {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             // ===== 浏览 =====
             SettingsSectionHeader("浏览")
 
@@ -213,7 +219,11 @@ fun SettingsScreen(
             }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                }
+            }
 
+            item(key = "fullscreen") {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             // ===== 全屏浏览 =====
             SettingsSectionHeader("全屏浏览")
 
@@ -247,7 +257,11 @@ fun SettingsScreen(
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                }
+            }
 
+            item(key = "remote_service") {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             // ===== 远程服务（Phase 4） =====
             SettingsSectionHeader("远程服务")
 
@@ -316,7 +330,11 @@ fun SettingsScreen(
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                }
+            }
 
+            item(key = "storage_and_about") {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             // ===== 存储 =====
             SettingsSectionHeader("存储空间")
 
@@ -337,11 +355,11 @@ fun SettingsScreen(
             SettingsSectionHeader("远程缓存")
             SettingsInfoRow(
                 label = "缩略图缓存",
-                value = viewModel.remoteThumbCacheSize()
+                value = remoteThumbCacheSize
             )
             SettingsInfoRow(
                 label = "原图缓存",
-                value = viewModel.remoteImageCacheSize()
+                value = remoteImageCacheSize
             )
             OutlinedButton(
                 onClick = {
@@ -429,6 +447,8 @@ fun SettingsScreen(
             )
 
             Spacer(modifier = Modifier.height(32.dp))
+                }
+            }
         }
     }
 }

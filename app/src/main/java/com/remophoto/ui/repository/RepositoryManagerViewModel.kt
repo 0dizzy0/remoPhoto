@@ -21,6 +21,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.ConcurrentHashMap
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import androidx.work.workDataOf
+import com.remophoto.data.scanner.RepositoryScanWorker
 
 /**
  * 仓库管理 ViewModel
@@ -67,6 +73,19 @@ class RepositoryManagerViewModel(application: Application) : AndroidViewModel(ap
     private val _scanMessage = MutableStateFlow("正在扫描…")
     val scanMessage: StateFlow<String> = _scanMessage.asStateFlow()
 
+    data class ScanUiState(
+        val phase: String = "准备扫描",
+        val discovered: Int = 0,
+        val indexed: Int = 0,
+        val total: Int? = null,
+        val remaining: Int? = null,
+        val directories: Int = 0
+    )
+
+    private val _scanStatusMap = MutableStateFlow<Map<Long, ScanUiState>>(emptyMap())
+    val scanStatusMap: StateFlow<Map<Long, ScanUiState>> = _scanStatusMap.asStateFlow()
+    private val workManager = WorkManager.getInstance(app)
+
     /** 各仓库扫描 Job（线程安全） */
     private val scanJobs = ConcurrentHashMap<Long, Job>()
 
@@ -75,6 +94,42 @@ class RepositoryManagerViewModel(application: Application) : AndroidViewModel(ap
 
     /** 并发扫描信号量，最多 3 个仓库同时扫描 */
     private val scanSemaphore = Semaphore(3)
+
+    init {
+        viewModelScope.launch {
+            workManager.getWorkInfosByTagFlow(RepositoryScanWorker.WORK_TAG).collect { works ->
+                val activeIds = mutableSetOf<Long>()
+                val states = mutableMapOf<Long, ScanUiState>()
+                works.forEach { work ->
+                    val repoId = work.tags.firstOrNull { it.startsWith("repository_scan_repo_") }
+                        ?.substringAfterLast('_')?.toLongOrNull() ?: return@forEach
+                    if (work.state == WorkInfo.State.RUNNING || work.state == WorkInfo.State.ENQUEUED) {
+                        activeIds += repoId
+                    }
+                    val data = work.progress
+                    val total = data.getInt(RepositoryScanWorker.KEY_TOTAL, -1).takeIf { it >= 0 }
+                    states[repoId] = ScanUiState(
+                        phase = data.getString(RepositoryScanWorker.KEY_PHASE) ?: if (work.state == WorkInfo.State.ENQUEUED) "等待扫描" else "准备扫描",
+                        discovered = data.getInt(RepositoryScanWorker.KEY_DISCOVERED, 0),
+                        indexed = data.getInt(RepositoryScanWorker.KEY_INDEXED, 0),
+                        total = total,
+                        remaining = data.getInt(RepositoryScanWorker.KEY_REMAINING, -1).takeIf { it >= 0 },
+                        directories = data.getInt(RepositoryScanWorker.KEY_DIRECTORIES, 0)
+                    )
+                    if (work.state == WorkInfo.State.FAILED) {
+                        _errorMessage.value = "扫描失败: ${work.outputData.getString(RepositoryScanWorker.KEY_ERROR) ?: "未知错误"}；旧索引仍保留"
+                    }
+                }
+                _scanningRepoIds.value = activeIds
+                _scanStatusMap.value = states
+                _scanProgressMap.value = states.mapValues { (_, state) ->
+                    val total = state.total
+                    if (total != null && total > 0) state.indexed.toFloat() / total else 0f
+                }
+                _isScanning.value = activeIds.isNotEmpty()
+            }
+        }
+    }
 
     /**
      * 初始化：加载仓库列表
@@ -174,6 +229,7 @@ class RepositoryManagerViewModel(application: Application) : AndroidViewModel(ap
         savedProgress[repoId] = currentProgress
         _pausedRepoIds.update { it + repoId }
         val hadJob = scanJobs.containsKey(repoId)
+        workManager.cancelUniqueWork(RepositoryScanWorker.uniqueName(repoId))
         scanJobs[repoId]?.cancel()
         scanJobs.remove(repoId)
         AppLogger.i(TAG, "[pause] 暂停: repo=$repoId progress=$currentProgress hadJob=$hadJob")
@@ -187,6 +243,7 @@ class RepositoryManagerViewModel(application: Application) : AndroidViewModel(ap
         savedProgress.remove(repoId)
         _pausedRepoIds.update { it - repoId }
         scanJobs[repoId]?.cancel()
+        workManager.cancelUniqueWork(RepositoryScanWorker.uniqueName(repoId))
         scanJobs.remove(repoId)
         _scanningRepoIds.update { it - repoId }
         _scanProgressMap.update { it - repoId }
@@ -219,14 +276,23 @@ class RepositoryManagerViewModel(application: Application) : AndroidViewModel(ap
             AppLogger.d(TAG, "[start] 跳过: repo=$repoId 已在运行中")
             return
         }
-        val offset = if (paused) {
+        if (paused) {
             _pausedRepoIds.update { it - repoId }
-            savedProgress.remove(repoId) ?: 0f
+            savedProgress.remove(repoId)
         } else {
             savedProgress.remove(repoId)
-            0f
         }
-        executeScan(repoId, manager, offset)
+        val request = OneTimeWorkRequestBuilder<RepositoryScanWorker>()
+            .setInputData(workDataOf(RepositoryScanWorker.KEY_REPOSITORY_ID to repoId))
+            .addTag(RepositoryScanWorker.WORK_TAG)
+            .addTag(RepositoryScanWorker.repositoryTag(repoId))
+            .build()
+        workManager.enqueueUniqueWork(
+            RepositoryScanWorker.uniqueName(repoId),
+            ExistingWorkPolicy.REPLACE,
+            request
+        )
+        AppLogger.i(TAG, "[start] 已提交前台 WorkManager: repo=$repoId work=${request.id}")
     }
 
     /**

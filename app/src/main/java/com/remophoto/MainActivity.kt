@@ -94,4 +94,14 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        (application as RemoPhotoApp).ensureRemoteServiceRunning("activity_resume")
+    }
+
+    override fun onStop() {
+        (application as RemoPhotoApp).ensureRemoteServiceRunning("activity_stop")
+        super.onStop()
+    }
 }

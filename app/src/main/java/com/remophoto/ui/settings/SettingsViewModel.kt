@@ -16,6 +16,7 @@ import com.remophoto.data.server.HttpServerManager
 import com.remophoto.domain.model.SortOrder
 import com.remophoto.util.AppLogger
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
@@ -77,6 +78,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _serverAddress = MutableStateFlow<String?>(null)
     val serverAddress: StateFlow<String?> = _serverAddress.asStateFlow()
 
+    private val _remoteThumbCacheSize = MutableStateFlow("计算中…")
+    val remoteThumbCacheSize: StateFlow<String> = _remoteThumbCacheSize.asStateFlow()
+
+    private val _remoteImageCacheSize = MutableStateFlow("计算中…")
+    val remoteImageCacheSize: StateFlow<String> = _remoteImageCacheSize.asStateFlow()
+
     // 导入/导出对话框
     var showExportDialog by mutableStateOf(false)
     var showImportDialog by mutableStateOf(false)
@@ -115,24 +122,21 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             settingsRepository.deviceName.collect { _deviceName.value = it }
         }
 
-        // Phase 4: 恢复服务状态（若 DataStore 记录为已开启但 ViewModel 重建，自动启动服务）
+        // 服务恢复由 Application 统一负责；设置页只观察真实运行状态，避免每次进页重复启动。
         viewModelScope.launch {
-            // 等待 httpServerEnabled 加载完毕
-            settingsRepository.httpServerEnabled.first().let { enabled ->
-                if (enabled && !_serverRunning.value) {
-                    AppLogger.i(TAG, "SettingsViewModel 重建，自动恢复远程服务")
-                    val context = getApplication<RemoPhotoApp>()
-                    startServer(context)
-                }
-            }
+            HttpServerForegroundService.runtimeRunning.collect { _serverRunning.value = it }
+        }
+        viewModelScope.launch {
+            HttpServerForegroundService.runtimeAddress.collect { _serverAddress.value = it }
         }
 
         AppLogger.i(TAG, "SettingsViewModel 初始化完成")
         loadStorageStats()
+        loadRemoteCacheStats()
     }
 
     private fun loadStorageStats() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 _totalImageCount.value = imageRepository.getTotalCount()
                 _totalStorageSize.value = imageRepository.getTotalFileSize()
@@ -259,25 +263,26 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     // ===== Phase 4: 远程缓存管理 =====
 
-    fun remoteThumbCacheSize(): String {
-        val context = getApplication<RemoPhotoApp>()
-        val dir = context.cacheDir.resolve("remote_thumb_cache")
-        return if (dir.exists()) formatFileSize(dirSize(dir)) else "空"
-    }
-
-    fun remoteImageCacheSize(): String {
-        val context = getApplication<RemoPhotoApp>()
-        val dir = context.cacheDir.resolve("remote_image_cache")
-        return if (dir.exists()) formatFileSize(dirSize(dir)) else "空"
+    private fun loadRemoteCacheStats() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val context = getApplication<RemoPhotoApp>()
+            val thumbDir = context.cacheDir.resolve("remote_thumb_cache")
+            val imageDir = context.cacheDir.resolve("remote_image_cache")
+            _remoteThumbCacheSize.value = if (thumbDir.exists()) formatFileSize(dirSize(thumbDir)) else "空"
+            _remoteImageCacheSize.value = if (imageDir.exists()) formatFileSize(dirSize(imageDir)) else "空"
+            AppLogger.d(TAG, "远程缓存统计完成: thumb=${_remoteThumbCacheSize.value}, image=${_remoteImageCacheSize.value}")
+        }
     }
 
     fun clearRemoteCaches(context: android.content.Context) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 val thumbDir = context.cacheDir.resolve("remote_thumb_cache")
                 val imageDir = context.cacheDir.resolve("remote_image_cache")
                 thumbDir.deleteRecursively()
                 imageDir.deleteRecursively()
+                _remoteThumbCacheSize.value = "空"
+                _remoteImageCacheSize.value = "空"
                 AppLogger.i(TAG, "远程缓存已清除")
             } catch (e: Exception) {
                 AppLogger.e(TAG, "清除远程缓存失败", e)

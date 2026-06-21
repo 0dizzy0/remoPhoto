@@ -12,6 +12,13 @@ import com.remophoto.util.Constants
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import java.util.ArrayDeque
+import java.util.UUID
+import java.io.DataInputStream
+import java.io.DataOutputStream
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.io.File
 import kotlin.coroutines.coroutineContext
 
 /**
@@ -28,6 +35,10 @@ import kotlin.coroutines.coroutineContext
  * @param context Application Context
  */
 class FileScanner(val context: Context) {
+
+    companion object {
+        private const val TAG = "FileScanner"
+    }
 
     /**
      * 扫描结果数据类
@@ -55,6 +66,145 @@ class FileScanner(val context: Context) {
         val total: Int,
         val phase: String
     )
+
+    data class SpoolScanResult(
+        val spoolFile: File,
+        val directories: List<Uri>,
+        val imageCount: Int,
+        val directoryCount: Int,
+        val failedDirectoryCount: Int
+    )
+
+    /**
+     * 大仓库遍历：图片元数据直接顺序写入磁盘，不在 JVM 堆中保存数十万对象。
+     */
+    suspend fun collectToSpool(
+        rootUri: Uri,
+        spoolFile: File,
+        onProgress: (directories: Int, images: Int) -> Unit = { _, _ -> }
+    ): SpoolScanResult = withContext(Dispatchers.IO) {
+        val rootDocumentId = DocumentsContract.getTreeDocumentId(rootUri)
+        val rootDocumentUri = DocumentsContract.buildDocumentUriUsingTree(rootUri, rootDocumentId)
+        val directories = mutableListOf<Uri>()
+        val queue = ArrayDeque<Pair<Uri, Int>>().apply { add(rootDocumentUri to 0) }
+        val projection = arrayOf(
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document.COLUMN_MIME_TYPE,
+            DocumentsContract.Document.COLUMN_SIZE,
+            DocumentsContract.Document.COLUMN_LAST_MODIFIED
+        )
+        var imageCount = 0
+        var directoryQueries = 0
+        var failedDirectories = 0
+        val sessionId = UUID.randomUUID().toString().take(8)
+        spoolFile.parentFile?.mkdirs()
+
+        DataOutputStream(BufferedOutputStream(spoolFile.outputStream())).use { output ->
+            while (queue.isNotEmpty()) {
+                coroutineContext.ensureActive()
+                val (directoryUri, depth) = queue.removeFirst()
+                if (depth > 10) continue
+                val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
+                    rootUri,
+                    DocumentsContract.getDocumentId(directoryUri)
+                )
+                try {
+                    context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+                        directoryQueries++
+                        val idIndex = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                        val nameIndex = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                        val mimeIndex = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                        val sizeIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
+                        val modifiedIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+                        while (cursor.moveToNext()) {
+                            val documentId = cursor.getString(idIndex)
+                            val name = cursor.getString(nameIndex) ?: "unknown"
+                            val mime = cursor.getString(mimeIndex) ?: "application/octet-stream"
+                            val childUri = DocumentsContract.buildDocumentUriUsingTree(rootUri, documentId)
+                            if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                                directories.add(childUri)
+                                queue.add(childUri to (depth + 1))
+                            } else if (isImage(name, mime)) {
+                                output.writeUTF(childUri.toString())
+                                output.writeUTF(name)
+                                output.writeUTF(directoryUri.toString())
+                                output.writeUTF(mime)
+                                output.writeLong(if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) cursor.getLong(sizeIndex) else 0L)
+                                output.writeLong(if (modifiedIndex >= 0 && !cursor.isNull(modifiedIndex)) cursor.getLong(modifiedIndex) else 0L)
+                                imageCount++
+                            }
+                        }
+                    } ?: run { failedDirectories++ }
+                } catch (e: Exception) {
+                    failedDirectories++
+                    AppLogger.w(TAG, "Spool 目录查询失败: session=$sessionId depth=$depth error=${e.message}")
+                }
+                if ((directoryQueries + failedDirectories) % 10 == 0) {
+                    output.flush()
+                    onProgress(directories.size, imageCount)
+                }
+            }
+        }
+        AppLogger.i(
+            TAG,
+            "Spool 遍历完成: session=$sessionId queries=$directoryQueries dirs=${directories.size} " +
+                "images=$imageCount failed=$failedDirectories bytes=${spoolFile.length()}"
+        )
+        SpoolScanResult(spoolFile, directories, imageCount, directoryQueries, failedDirectories)
+    }
+
+    suspend fun processSpool(
+        spoolFile: File,
+        totalImages: Int,
+        repositoryId: Long,
+        albumIdMap: Map<String, Long>,
+        imageDao: ImageDao,
+        onProgress: (processed: Int, total: Int) -> Unit = { _, _ -> }
+    ): Int = withContext(Dispatchers.IO) {
+        val normalizedAlbumIds = buildNormalizedAlbumMap(albumIdMap)
+        val batch = ArrayList<ImageEntity>(Constants.DB_BATCH_SIZE)
+        var processed = 0
+        DataInputStream(BufferedInputStream(spoolFile.inputStream())).use { input ->
+            while (processed < totalImages) {
+                coroutineContext.ensureActive()
+                val filePath = input.readUTF()
+                val fileName = input.readUTF()
+                val parentPath = input.readUTF()
+                val mime = input.readUTF()
+                val size = input.readLong()
+                val modified = input.readLong()
+                val albumId = normalizedAlbumIds[parentPath]
+                    ?: normalizedAlbumIds[normalizePath(parentPath)]
+                    ?: 0L
+                batch.add(
+                    ImageEntity(
+                        filePath = filePath,
+                        fileName = fileName,
+                        fileSize = size,
+                        lastModified = modified,
+                        mimeType = mime,
+                        albumId = albumId,
+                        repositoryId = repositoryId
+                    )
+                )
+                processed++
+                if (batch.size >= Constants.DB_BATCH_SIZE) {
+                    val started = System.currentTimeMillis()
+                    imageDao.upsertAll(batch)
+                    AppLogger.i(TAG, "Spool 批次写入: count=${batch.size} elapsedMs=${System.currentTimeMillis() - started}")
+                    batch.clear()
+                    onProgress(processed, totalImages)
+                }
+            }
+        }
+        if (batch.isNotEmpty()) {
+            imageDao.upsertAll(batch)
+            batch.clear()
+        }
+        onProgress(processed, totalImages)
+        processed
+    }
 
     // ===== 全量扫描 =====
 
@@ -231,7 +381,10 @@ class FileScanner(val context: Context) {
     data class ImageFileInfo(
         val uri: Uri,
         val fileName: String,
-        val parentPath: String  // 父目录的 URI 字符串
+        val parentPath: String,  // 父目录的 URI 字符串
+        val fileSize: Long = 0L,
+        val lastModified: Long = 0L,
+        val mimeType: String = "image/*"
     )
 
     /**
@@ -386,6 +539,14 @@ class FileScanner(val context: Context) {
         return 0L
     }
 
+    private fun buildNormalizedAlbumMap(albumIdMap: Map<String, Long>): Map<String, Long> =
+        buildMap(albumIdMap.size * 2) {
+            albumIdMap.forEach { (path, id) ->
+                put(path, id)
+                put(normalizePath(path), id)
+            }
+        }
+
     /**
      * 规范化目录路径：去除尾部 /、URL 解码
      */
@@ -426,19 +587,89 @@ class FileScanner(val context: Context) {
         rootUri: Uri,
         onProgress: ((Int) -> Unit)? = null
     ): Pair<List<ImageFileInfo>, List<Uri>>? = withContext(Dispatchers.IO) {
-        val rootDoc = DocumentFile.fromTreeUri(context, rootUri) ?: return@withContext null
+        val rootDocumentId = try {
+            DocumentsContract.getTreeDocumentId(rootUri)
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "无法解析 SAF 根目录", e)
+            return@withContext null
+        }
         val imageFiles = mutableListOf<ImageFileInfo>()
         val directories = mutableListOf<Uri>()
-        // 每发现 50 个文件报告一次进度
-        var fileCount = 0
-        collectImageFiles(
-            rootDoc, rootUri.toString(), imageFiles, directories, depth = 0,
-            onProgress = { count ->
-                fileCount = count
-                onProgress?.invoke(count)
+        val queue = ArrayDeque<Pair<Uri, Int>>()
+        val rootDocumentUri = DocumentsContract.buildDocumentUriUsingTree(rootUri, rootDocumentId)
+        queue.add(rootDocumentUri to 0)
+        val sessionId = UUID.randomUUID().toString().take(8)
+        var directoryQueries = 0
+        var failedDirectories = 0
+        val startedAt = System.currentTimeMillis()
+        val projection = arrayOf(
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document.COLUMN_MIME_TYPE,
+            DocumentsContract.Document.COLUMN_SIZE,
+            DocumentsContract.Document.COLUMN_LAST_MODIFIED
+        )
+
+        AppLogger.i(TAG, "扫描遍历开始: session=$sessionId, authority=${rootUri.authority}")
+        while (queue.isNotEmpty()) {
+            coroutineContext.ensureActive()
+            val (directoryUri, depth) = queue.removeFirst()
+            if (depth > 10) continue
+            val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
+                rootUri,
+                DocumentsContract.getDocumentId(directoryUri)
+            )
+            try {
+                context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+                    directoryQueries++
+                    val idIndex = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                    val nameIndex = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                    val mimeIndex = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                    val sizeIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
+                    val modifiedIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+                    while (cursor.moveToNext()) {
+                        val documentId = cursor.getString(idIndex)
+                        val name = cursor.getString(nameIndex) ?: "unknown"
+                        val mime = cursor.getString(mimeIndex) ?: "application/octet-stream"
+                        val childUri = DocumentsContract.buildDocumentUriUsingTree(rootUri, documentId)
+                        if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                            directories.add(childUri)
+                            queue.add(childUri to (depth + 1))
+                        } else if (isImage(name, mime)) {
+                            imageFiles.add(
+                                ImageFileInfo(
+                                    uri = childUri,
+                                    fileName = name,
+                                    parentPath = directoryUri.toString(),
+                                    fileSize = if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) cursor.getLong(sizeIndex) else 0L,
+                                    lastModified = if (modifiedIndex >= 0 && !cursor.isNull(modifiedIndex)) cursor.getLong(modifiedIndex) else 0L,
+                                    mimeType = mime
+                                )
+                            )
+                        }
+                    }
+                } ?: run { failedDirectories++ }
+            } catch (e: Exception) {
+                failedDirectories++
+                AppLogger.w(TAG, "目录查询失败: session=$sessionId, depth=$depth, error=${e.message}")
             }
+            if ((directoryQueries + failedDirectories) % 20 == 0) {
+                onProgress?.invoke(imageFiles.size + directories.size)
+            }
+        }
+        AppLogger.i(
+            TAG,
+            "扫描遍历完成: session=$sessionId, queries=$directoryQueries, dirs=${directories.size}, " +
+                "images=${imageFiles.size}, failedDirs=$failedDirectories, elapsedMs=${System.currentTimeMillis() - startedAt}"
         )
         Pair(imageFiles, directories)
+    }
+
+    private fun isImage(name: String, mimeType: String): Boolean {
+        if (name.startsWith('.')) return false
+        val extension = name.substringAfterLast('.', "").lowercase()
+        return extension in Constants.SUPPORTED_IMAGE_EXTENSIONS &&
+            (mimeType == "application/octet-stream" || mimeType.startsWith("image/"))
     }
 
     /**
@@ -508,36 +739,39 @@ class FileScanner(val context: Context) {
         var processedCount = 0
         var writtenCount = 0
         val batch = mutableListOf<ImageEntity>()
+        val normalizedAlbumIds = buildNormalizedAlbumMap(albumIdMap)
+        val startedAt = System.currentTimeMillis()
 
         onProgress(ScanProgress(0, totalFiles, "正在提取图片索引 (0/$totalFiles)…"))
 
         for (fileInfo in imageFiles) {
             coroutineContext.ensureActive()
 
-            val metadata = extractFullMetadata(fileInfo.uri, fileInfo.fileName)
-            if (metadata != null) {
-                val albumId = findAlbumId(fileInfo.parentPath, albumIdMap)
-
-                val entity = ImageEntity(
+            val albumId = normalizedAlbumIds[fileInfo.parentPath]
+                ?: normalizedAlbumIds[normalizePath(fileInfo.parentPath)]
+                ?: 0L
+            val entity = ImageEntity(
                     filePath = fileInfo.uri.toString(),
-                    fileName = metadata.fileName,
-                    fileSize = metadata.fileSize,
-                    lastModified = metadata.lastModified,
-                    mimeType = metadata.mimeType,
+                    fileName = fileInfo.fileName,
+                    fileSize = fileInfo.fileSize,
+                    lastModified = fileInfo.lastModified,
+                    mimeType = fileInfo.mimeType,
                     width = 0,
                     height = 0,
                     albumId = albumId,
                     repositoryId = repositoryId
                 )
-                batch.add(entity)
-            }
+            batch.add(entity)
 
             processedCount++
 
             if (batch.size >= Constants.DB_BATCH_SIZE) {
+                val batchStartedAt = System.currentTimeMillis()
+                val batchSize = batch.size
                 imageDao.upsertAll(batch.toList())
                 writtenCount += batch.size
                 batch.clear()
+                AppLogger.i(TAG, "扫描批次写入: count=$batchSize, elapsedMs=${System.currentTimeMillis() - batchStartedAt}")
                 onProgress(ScanProgress(processedCount, totalFiles, "正在写入索引 ($processedCount/$totalFiles)…"))
             }
         }
@@ -549,6 +783,7 @@ class FileScanner(val context: Context) {
         }
 
         onProgress(ScanProgress(totalFiles, totalFiles, "索引写入完成 ($writtenCount 张图片)"))
+        AppLogger.i(TAG, "扫描索引完成: images=$writtenCount, elapsedMs=${System.currentTimeMillis() - startedAt}")
         writtenCount
     }
 

@@ -15,6 +15,8 @@ import kotlinx.coroutines.runBlocking
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
+import java.io.ByteArrayOutputStream
+import android.graphics.BitmapFactory
 import java.net.InetAddress
 import java.net.NetworkInterface
 
@@ -68,7 +70,7 @@ class HttpServerManager(private val context: Context) {
             val lanIp = getLanIpAddress()
                 ?: return reportError("无法获取局域网 IP，请确保已连接 WiFi")
 
-            val serverInstance = RemoPhotoServer(lanIp, port, context)
+            val serverInstance = RemoPhotoServer(lanIp, port, context, deviceName)
             serverInstance.start()
             server = serverInstance
             currentPort = port
@@ -146,7 +148,8 @@ class HttpServerManager(private val context: Context) {
     private inner class RemoPhotoServer(
         hostname: String,
         port: Int,
-        private val ctx: Context
+        private val ctx: Context,
+        private val deviceName: String
     ) : NanoHTTPD(hostname, port) {
 
         private val deps by lazy { ctx.dependencies }
@@ -164,7 +167,7 @@ class HttpServerManager(private val context: Context) {
                 }
                 uri.matches(imageThumbRegex) -> {
                     val id = imageThumbRegex.find(uri)!!.groupValues[1].toLong()
-                    handleImageStream(id)
+                    handleImageThumbnail(id)
                 }
                 uri.matches(imageInfoRegex) -> {
                     val id = imageInfoRegex.find(uri)!!.groupValues[1].toLong()
@@ -181,19 +184,43 @@ class HttpServerManager(private val context: Context) {
         // ===== Handlers =====
 
         private fun handlePing(): Response {
-            return jsonResponse(Response.Status.OK, """{"status":"ok","version":"1.0.0","app":"remoPhoto"}""")
+            return jsonResponse(
+                Response.Status.OK,
+                obj(
+                    "status" to "ok",
+                    "version" to "1.0.0",
+                    "app" to "remoPhoto",
+                    "deviceName" to deviceName.ifBlank { "remoPhoto" }
+                )
+            )
         }
 
         private fun handleAlbumsList(): Response {
             return try {
                 val albums = runBlocking { deps.albumRepository.getAllAlbumsList() }
-                val rootAlbums = albums.filter { it.parentAlbumId == null }
-                val json = buildJsonArray(rootAlbums) { album ->
+                val localRepoIds = runBlocking {
+                    deps.repositoryDao.getAllRepositoriesList()
+                        .filter { it.remoteConnectionId == null }
+                        .mapTo(mutableSetOf()) { it.id }
+                }
+                // 只共享本机 SAF 仓库。远程同步数据若再次暴露，会形成 A→B→A 回环。
+                val localAlbums = albums.filter { it.repositoryId in localRepoIds }
+                AppLogger.i(
+                    TAG,
+                    "/api/albums: 本地相册=${localAlbums.size}, " +
+                        "已拦截远程相册=${albums.size - localAlbums.size}"
+                )
+                val json = buildJsonArray(localAlbums) { album ->
+                    val coverImageId = runBlocking {
+                        deps.imageDao.getCoverImageId(album.id, album.coverImagePath)
+                    }
                     obj(
                         "id" to album.id,
                         "name" to album.name,
                         "imageCount" to album.imageCount,
-                        "repositoryId" to album.repositoryId
+                        "repositoryId" to album.repositoryId,
+                        "parentAlbumId" to album.parentAlbumId,
+                        "coverImageId" to coverImageId
                     )
                 }
                 jsonResponse(Response.Status.OK, """{"albums":$json}""")
@@ -205,6 +232,12 @@ class HttpServerManager(private val context: Context) {
 
         private fun handleImageList(albumId: Long, params: Map<String, String>): Response {
             return try {
+                val album = runBlocking { deps.albumRepository.getAlbumById(albumId) }
+                    ?: return jsonResponse(Response.Status.NOT_FOUND, """{"error":"Album not found"}""")
+                if (!isLocalRepository(album.repositoryId)) {
+                    AppLogger.w(TAG, "拦截远程相册二次共享: albumId=$albumId")
+                    return jsonResponse(Response.Status.FORBIDDEN, """{"error":"Remote relay forbidden"}""")
+                }
                 val page = params["page"]?.toIntOrNull() ?: 1
                 val pageSize = params["pageSize"]?.toIntOrNull()?.coerceIn(1, 200) ?: 50
                 val offset = (page - 1) * pageSize
@@ -237,6 +270,10 @@ class HttpServerManager(private val context: Context) {
             return try {
                 val img = runBlocking { deps.imageRepository.getImageById(imageId) }
                     ?: return jsonResponse(Response.Status.NOT_FOUND, """{"error":"Image not found"}""")
+                if (!isLocalRepository(img.repositoryId)) {
+                    AppLogger.w(TAG, "拦截远程图片二次共享: imageId=$imageId")
+                    return jsonResponse(Response.Status.FORBIDDEN, """{"error":"Remote relay forbidden"}""")
+                }
 
                 val inputStream = openImageStream(img)
                     ?: return jsonResponse(Response.Status.NOT_FOUND, """{"error":"File not accessible"}""")
@@ -250,10 +287,51 @@ class HttpServerManager(private val context: Context) {
             }
         }
 
+        private fun handleImageThumbnail(imageId: Long): Response {
+            return try {
+                val img = runBlocking { deps.imageRepository.getImageById(imageId) }
+                    ?: return jsonResponse(Response.Status.NOT_FOUND, """{"error":"Image not found"}""")
+                if (!isLocalRepository(img.repositoryId)) {
+                    return jsonResponse(Response.Status.FORBIDDEN, """{"error":"Remote relay forbidden"}""")
+                }
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                openImageStream(img)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                    return jsonResponse(Response.Status.UNSUPPORTED_MEDIA_TYPE, """{"error":"Unsupported image"}""")
+                }
+                var sample = 1
+                while (bounds.outWidth / sample > 768 || bounds.outHeight / sample > 768) sample *= 2
+                val options = BitmapFactory.Options().apply {
+                    inSampleSize = sample
+                    inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+                }
+                val bitmap = openImageStream(img)?.use { BitmapFactory.decodeStream(it, null, options) }
+                    ?: return jsonResponse(Response.Status.NOT_FOUND, """{"error":"File not accessible"}""")
+                val output = ByteArrayOutputStream()
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 82, output)
+                bitmap.recycle()
+                val bytes = output.toByteArray()
+                AppLogger.d(TAG, "缩略图生成: imageId=$imageId sample=$sample bytes=${bytes.size}")
+                newFixedLengthResponse(
+                    Response.Status.OK,
+                    "image/jpeg",
+                    ByteArrayInputStream(bytes),
+                    bytes.size.toLong()
+                )
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "/api/image/$imageId/thumb 错误", e)
+                jsonResponse(Response.Status.INTERNAL_ERROR, """{"error":"Server Error"}""")
+            }
+        }
+
         private fun handleImageInfo(imageId: Long): Response {
             return try {
                 val img = runBlocking { deps.imageRepository.getImageById(imageId) }
                     ?: return jsonResponse(Response.Status.NOT_FOUND, """{"error":"Image not found"}""")
+                if (!isLocalRepository(img.repositoryId)) {
+                    AppLogger.w(TAG, "拦截远程图片信息二次共享: imageId=$imageId")
+                    return jsonResponse(Response.Status.FORBIDDEN, """{"error":"Remote relay forbidden"}""")
+                }
 
                 val json = buildJsonObject {
                     obj(
@@ -274,6 +352,10 @@ class HttpServerManager(private val context: Context) {
         }
 
         // ===== Helpers =====
+
+        private fun isLocalRepository(repositoryId: Long): Boolean = runBlocking {
+            deps.repositoryDao.getRepositoryById(repositoryId)?.remoteConnectionId == null
+        }
 
         private fun openImageStream(img: ImageEntity): java.io.InputStream? {
             return try {

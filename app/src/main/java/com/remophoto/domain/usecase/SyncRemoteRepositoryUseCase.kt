@@ -46,28 +46,45 @@ class SyncRemoteRepositoryUseCase(
 
         val dtos: List<RemoteAlbumDto> = remoteRepository.fetchAlbums(connection)
 
-        // 先清除旧数据以保证幂等
+        // 远程相册不能再次作为本机数据源对外共享。同步时完整替换该远程仓库
+        // 的索引，避免旧 albumId 对应的图片残留并在反复浏览后持续重复。
+        imageDao.deleteByRepository(localRepoId)
         albumDao.deleteByRepository(localRepoId)
 
-        val entities: List<AlbumEntity> = dtos.map { dto: RemoteAlbumDto ->
-            AlbumEntity(
+        // 第一遍插入并建立“服务端相册 ID -> 本地相册 ID”映射。
+        val localIdByRemoteId = mutableMapOf<Long, Long>()
+        dtos.forEach { dto ->
+            val localId = albumDao.insert(AlbumEntity(
                 id = 0,
                 name = dto.name,
-                directoryPath = "${connection.host}:${connection.port}/${dto.id}",
+                directoryPath = "remote://${connection.host}:${connection.port}/album/${dto.id}",
                 repositoryId = localRepoId,
-                parentAlbumId = dto.parentAlbumId,
-                coverImagePath = null,
+                parentAlbumId = null,
+                coverImagePath = dto.coverImageId?.let {
+                    "http://${connection.host}:${connection.port}/api/image/$it/thumb"
+                },
                 imageCount = dto.imageCount
-            )
+            ))
+            localIdByRemoteId[dto.id] = localId
         }
 
-        entities.forEach { albumDao.insert(it) }
+        // 第二遍修复父子关系。直接写服务端 parentAlbumId 会与本地自增 ID 混用。
+        dtos.forEach { dto ->
+            val localId = localIdByRemoteId[dto.id] ?: return@forEach
+            val localParentId = dto.parentAlbumId?.let(localIdByRemoteId::get)
+            albumDao.updateParentAlbum(localId, localParentId)
+        }
 
-        val totalImages = entities.sumOf { it.imageCount }
+        val totalImages = dtos.sumOf { it.imageCount }
         repositoryDao.updateImageCount(localRepoId, totalImages)
 
-        AppLogger.i(TAG, "远程相册同步完成: ${entities.size} 个相册, $totalImages 张图片")
-        entities.size
+        AppLogger.i(
+            TAG,
+            "远程相册同步完成: ${dtos.size} 个相册, $totalImages 张图片, " +
+                "父子映射=${dtos.count { it.parentAlbumId != null }}, " +
+                "封面=${dtos.count { it.coverImageId != null }}"
+        )
+        dtos.size
     }
 
     /**
@@ -94,35 +111,36 @@ class SyncRemoteRepositoryUseCase(
         AppLogger.i(TAG, "开始同步远程图片: album=$remoteAlbumId")
 
         var page = 1
-        var totalSynced = 0
+        val remoteImages = mutableListOf<RemoteImageDto>()
 
         while (true) {
             val response = remoteRepository.fetchImages(connection, remoteAlbumId, page, pageSize)
+            remoteImages += response.images
 
-            val entities: List<ImageEntity> = response.images.map { dto: RemoteImageDto ->
-                ImageEntity(
-                    id = 0,
-                    filePath = "http://$host:$port/api/image/${dto.id}",
-                    fileName = dto.fileName,
-                    fileSize = dto.fileSize,
-                    lastModified = dto.lastModified,
-                    mimeType = dto.mimeType,
-                    width = dto.width,
-                    height = dto.height,
-                    albumId = localAlbumId,
-                    repositoryId = localRepoId
-                )
-            }
-
-            imageDao.upsertAll(entities)
-            totalSynced += entities.size
-
-            if (response.images.size < pageSize || totalSynced >= response.totalCount) {
+            if (response.images.size < pageSize || remoteImages.size >= response.totalCount) {
                 break
             }
             page++
         }
 
+        // 全部分页成功后再替换，网络中断时保留现有离线索引。
+        val entities = remoteImages.distinctBy { it.id }.map { dto ->
+            ImageEntity(
+                id = 0,
+                filePath = "http://$host:$port/api/image/${dto.id}",
+                fileName = dto.fileName,
+                fileSize = dto.fileSize,
+                lastModified = dto.lastModified,
+                mimeType = dto.mimeType,
+                width = dto.width,
+                height = dto.height,
+                albumId = localAlbumId,
+                repositoryId = localRepoId
+            )
+        }
+        imageDao.deleteByAlbum(localAlbumId)
+        imageDao.upsertAll(entities)
+        val totalSynced = entities.size
         albumDao.updateImageCount(localAlbumId, totalSynced)
         AppLogger.i(TAG, "远程图片同步完成: album=$remoteAlbumId, $totalSynced 张")
         totalSynced

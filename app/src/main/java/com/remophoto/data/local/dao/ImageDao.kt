@@ -42,6 +42,14 @@ interface ImageDao {
     @Query("SELECT * FROM images WHERE album_id = :albumId ORDER BY file_name COLLATE NOCASE ASC LIMIT 1")
     suspend fun getFirstImageByAlbum(albumId: Long): ImageEntity?
 
+    /** 自定义封面优先，否则返回按现有文件名规则选出的第一张图片。 */
+    @Query(
+        "SELECT id FROM images WHERE album_id = :albumId " +
+            "ORDER BY CASE WHEN file_path = :coverPath THEN 0 ELSE 1 END, " +
+            "file_name COLLATE NOCASE ASC LIMIT 1"
+    )
+    suspend fun getCoverImageId(albumId: Long, coverPath: String?): Long?
+
     /** 根据文件路径查询图片 */
     @Query("SELECT * FROM images WHERE file_path = :filePath LIMIT 1")
     suspend fun getImageByPath(filePath: String): ImageEntity?

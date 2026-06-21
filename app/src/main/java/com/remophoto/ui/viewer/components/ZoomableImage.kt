@@ -26,6 +26,7 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import android.os.SystemClock
 
 /**
  * 可缩放图片组件
@@ -53,6 +54,9 @@ fun ZoomableImage(
 ) {
     val context = LocalContext.current
     val currentScale by rememberUpdatedState(scale)
+    val currentScrollUp by rememberUpdatedState(onScrollUp)
+    val currentScrollDown by rememberUpdatedState(onScrollDown)
+    val currentScaleChange by rememberUpdatedState(onScaleChange)
 
     // 平移偏移量
     var offsetX by remember { mutableFloatStateOf(0f) }
@@ -97,6 +101,43 @@ fun ZoomableImage(
         modifier = modifier
             .fillMaxSize()
             .onSizeChanged { containerSize = it }
+            // ACTION_SCROLL 不会先产生 down，必须在独立循环中处理。
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    var lastPageAt = 0L
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        if (event.type != PointerEventType.Scroll) continue
+                        val change = event.changes.firstOrNull() ?: continue
+                        val delta = change.scrollDelta.let {
+                            if (abs(it.y) >= abs(it.x)) it.y else it.x
+                        }
+                        if (delta == 0f) continue
+
+                        val activeScale = currentScale
+                        if (activeScale <= Constants.MIN_SCALE + 0.01f) {
+                            val now = SystemClock.uptimeMillis()
+                            if (now - lastPageAt < 180L) {
+                                AppLogger.d(TAG, "滚轮翻页被防抖忽略: delta=$delta, scale=$activeScale")
+                            } else {
+                                lastPageAt = now
+                                if (delta > 0f) currentScrollDown() else currentScrollUp()
+                                AppLogger.i(
+                                    TAG,
+                                    "滚轮翻页: direction=${if (delta > 0f) "next" else "previous"}, scale=$activeScale"
+                                )
+                            }
+                        } else {
+                            val factor = if (delta > 0f) 0.95f else 1.05f
+                            val newScale = (activeScale * factor)
+                                .coerceIn(Constants.MIN_SCALE, Constants.MAX_SCALE)
+                            currentScaleChange(newScale)
+                            AppLogger.d(TAG, "滚轮缩放: delta=$delta, $activeScale->$newScale")
+                        }
+                        change.consume()
+                    }
+                }
+            }
             // 缩放+平移手势（内层，靠近内容，优先接收事件）
             .pointerInput(Unit) {
                 awaitEachGesture {
@@ -114,30 +155,7 @@ fun ZoomableImage(
 
                         if (isUp) break
 
-                        // 鼠标滚轮事件
-                        if (event.type == PointerEventType.Scroll) {
-                            if (myScale <= Constants.MIN_SCALE + 0.01f) {
-                                // scale==1: 滚轮用于翻页
-                                val scrollDelta = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
-                                if (scrollDelta > 0) {
-                                    onScrollDown()
-                                } else if (scrollDelta < 0) {
-                                    onScrollUp()
-                                }
-                                gestureConsumed = true
-                                changes.forEach { it.consume() }
-                            } else {
-                                // scale>1: 滚轮用于缩放
-                                val scrollDelta = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
-                                val zoomFactor = if (scrollDelta > 0) 0.95f else 1.05f
-                                val newScale = (myScale * zoomFactor)
-                                    .coerceIn(Constants.MIN_SCALE, Constants.MAX_SCALE)
-                                onScaleChange(newScale)
-                                myScale = newScale
-                                gestureConsumed = true
-                                changes.forEach { it.consume() }
-                            }
-                        } else if (changes.size >= 2 || myScale > Constants.MIN_SCALE + 0.01f) {
+                        if (changes.size >= 2 || myScale > Constants.MIN_SCALE + 0.01f) {
                             // 双指缩放 或 已缩放状态下的单指平移
                             gestureConsumed = true
                             if (changes.size >= 2) {
@@ -203,3 +221,5 @@ fun ZoomableImage(
         )
     }
 }
+
+private const val TAG = "ZoomableImage"

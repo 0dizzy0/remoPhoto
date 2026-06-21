@@ -39,6 +39,8 @@ import com.remophoto.ui.viewer.components.ZoomableImage
 import com.remophoto.util.AppLogger
 import com.remophoto.util.Constants
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
 import java.io.File
@@ -83,6 +85,8 @@ fun FullScreenViewer(
     val isPlaying by viewModel.isPlaying.collectAsState()
     val playIntervalMs by viewModel.playIntervalMs.collectAsState()
     val intervalSeconds = (playIntervalMs / 1000L).toInt()
+    val viewerScope = rememberCoroutineScope()
+    var wheelNavigationJob by remember { mutableStateOf<Job?>(null) }
 
     // 设置读取
     var useVolumeKeys by remember { mutableStateOf(true) }
@@ -106,6 +110,21 @@ fun FullScreenViewer(
         initialPage = imageIndex,
         pageCount = { images.size.coerceAtLeast(1) }
     )
+
+    fun navigateByWheel(delta: Int) {
+        if (wheelNavigationJob?.isActive == true || images.isEmpty()) {
+            AppLogger.d(TAG, "滚轮翻页忽略: navigationInFlight=true")
+            return
+        }
+        val target = (currentIndex + delta).coerceIn(images.indices)
+        if (target == currentIndex) return
+        wheelNavigationJob = viewerScope.launch {
+            // Pager 是唯一翻页执行者；完成后再同步 VM，避免双向状态竞争。
+            pagerState.scrollToPage(target)
+            viewModel.goToImage(target)
+            delay(220L)
+        }
+    }
 
     // ===== 初始化状态机：加载中 → 定位目标页 → 启用同步 =====
     /** 图片首次加载完成 */
@@ -333,8 +352,8 @@ fun FullScreenViewer(
                             AppLogger.d(TAG, "长按 → 显示菜单")
                             showLongPressMenu = true
                         },
-                        onScrollUp = { viewModel.previousImage() },
-                        onScrollDown = { viewModel.nextImage() },
+                        onScrollUp = { navigateByWheel(-1) },
+                        onScrollDown = { navigateByWheel(1) },
                         modifier = Modifier
                             .fillMaxSize()
                     )

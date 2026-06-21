@@ -53,6 +53,7 @@ fun RepositoryManagerScreen(
     val pausedRepoIds by viewModel.pausedRepoIds.collectAsState()
     val scanProgressMap by viewModel.scanProgressMap.collectAsState()
     val scanMessage by viewModel.scanMessage.collectAsState()
+    val scanStatusMap by viewModel.scanStatusMap.collectAsState()
 
     // SAF 目录选择器
     val directoryPickerLauncher = rememberLauncherForActivityResult(
@@ -154,6 +155,7 @@ fun RepositoryManagerScreen(
                         isScanning = repo.id in scanningRepoIds,
                         isPaused = repo.id in pausedRepoIds,
                         scanProgress = scanProgressMap[repo.id] ?: 0f,
+                        scanStatus = scanStatusMap[repo.id],
                         onDelete = { deleteConfirmRepoId = repo.id },
                         onRescan = { viewModel.rescanRepository(repo.id) },
                         onPause = { viewModel.pauseScan(repo.id) },
@@ -211,6 +213,7 @@ private fun RepositoryItem(
     isScanning: Boolean = false,
     isPaused: Boolean = false,
     scanProgress: Float = 0f,
+    scanStatus: RepositoryManagerViewModel.ScanUiState? = null,
     onDelete: () -> Unit,
     onRescan: () -> Unit,
     onPause: () -> Unit = {},
@@ -353,9 +356,25 @@ private fun RepositoryItem(
             // 扫描进度条（仅本地扫描中的仓库显示）
             if (isScanning && !isRemote) {
                 Spacer(modifier = Modifier.height(8.dp))
-                LinearProgressIndicator(
-                    progress = { scanProgress },
-                    modifier = Modifier.fillMaxWidth(),
+                if (scanStatus?.total != null) {
+                    LinearProgressIndicator(
+                        progress = { scanProgress },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = when {
+                        scanStatus == null -> "准备扫描…"
+                        scanStatus.total == null ->
+                            "${scanStatus.phase} · 已检查 ${scanStatus.directories} 个目录 · 已发现 ${scanStatus.discovered} 张"
+                        else ->
+                            "${scanStatus.phase} · 已扫描 ${scanStatus.indexed} / ${scanStatus.total} 张 · 剩余 ${scanStatus.remaining ?: 0} 张"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

@@ -1,7 +1,10 @@
 package com.remophoto.domain.usecase
 
 import android.net.Uri
+import android.provider.DocumentsContract
 import com.remophoto.data.local.dao.AlbumDao
+import com.remophoto.data.local.AppDatabase
+import androidx.room.withTransaction
 import com.remophoto.data.local.dao.ImageDao
 import com.remophoto.data.local.dao.RepositoryDao
 import com.remophoto.data.local.entity.AlbumEntity
@@ -22,12 +25,21 @@ import kotlinx.coroutines.withContext
  * 4. 更新仓库扫描信息
  */
 class ScanImagesUseCase(
+    private val database: AppDatabase,
     private val fileScanner: FileScanner,
     private val imageDao: ImageDao,
     private val albumDao: AlbumDao,
     private val repositoryDao: RepositoryDao,
     private val albumCoverManager: AlbumCoverManager? = null
 ) {
+
+    data class ScanStatus(
+        val phase: String,
+        val discoveredImages: Int,
+        val indexedImages: Int,
+        val totalImages: Int? = null,
+        val checkedDirectories: Int = 0
+    )
 
     /**
      * 执行全量扫描
@@ -40,26 +52,33 @@ class ScanImagesUseCase(
     suspend fun executeFullScan(
         repoId: Long,
         rootUri: Uri,
-        onProgress: (Float) -> Unit = {}
+        onProgress: (Float) -> Unit = {},
+        onStatus: (ScanStatus) -> Unit = {}
     ): Int = withContext(Dispatchers.IO) {
         onProgress(0f)
+        val spoolDir = java.io.File(fileScanner.context.cacheDir, "scan-spool").apply { mkdirs() }
+        spoolDir.listFiles { file -> file.name.startsWith("repo-$repoId-") }
+            ?.forEach { stale ->
+                if (stale.delete()) AppLogger.i(TAG, "已清理上次异常退出的扫描临时文件: ${stale.name}")
+            }
+        val spoolFile = java.io.File(spoolDir, "repo-$repoId-${System.currentTimeMillis()}.bin")
+        try {
 
         // ===== 阶段 1：收集（不写 DB，旧数据完整保留） =====
 
         // 1a. 遍历目录树
         onProgress(0.02f)
-        val collected = fileScanner.collectDirectoriesAndImages(
+        val collected = fileScanner.collectToSpool(
             rootUri = rootUri,
-            onProgress = { fileCount ->
-                val fraction = 0.02f + 0.28f * (fileCount.toFloat() / (fileCount + 100).toFloat())
+            spoolFile = spoolFile,
+            onProgress = { directoryCount, imageCount ->
+                val fraction = 0.02f + 0.28f * (directoryCount.toFloat() / (directoryCount + 100).toFloat())
                 onProgress(fraction.coerceIn(0.02f, 0.30f))
+                onStatus(ScanStatus("遍历目录", imageCount, 0, null, directoryCount))
             }
         )
-        if (collected == null) {
-            onProgress(1f)
-            return@withContext 0
-        }
-        val (imageFiles, directories) = collected
+        val directories = collected.directories
+        onStatus(ScanStatus("建立索引", collected.imageCount, 0, collected.imageCount, collected.directoryCount))
 
         onProgress(0.32f)
 
@@ -74,36 +93,29 @@ class ScanImagesUseCase(
 
         // ===== 阶段 2：原子替换（旧数据在此刻才删除） =====
 
-        // 2a. 删除旧数据
-        imageDao.deleteByRepository(repoId)
-        albumDao.deleteByRepository(repoId)
-
-        onProgress(0.42f)
-
-        // 2b. 插入新相册 → 获得真实 albumId 映射
         val albumIdMap = mutableMapOf<String, Long>()
-        for ((_, entity) in albumEntities.withIndex()) {
-            val id = albumDao.insert(entity)
-            albumIdMap[entity.directoryPath] = id
-        }
-
-        AppLogger.i(TAG, "相册已插入: ${albumIdMap.size} 个, 映射键示例=[${albumIdMap.keys.take(2).joinToString(" | ")}]")
-
-        onProgress(0.48f)
-
-        // 2c. 处理图片元数据并写入 DB（用真实 albumIdMap）
-        val totalImages = fileScanner.processImages(
-            imageFiles = imageFiles,
-            repositoryId = repoId,
-            albumIdMap = albumIdMap,
-            imageDao = imageDao,
-            onProgress = { progress ->
-                val fraction = if (progress.total > 0) {
-                    0.48f + progress.current.toFloat() / progress.total.toFloat() * 0.42f
-                } else 0.48f
-                onProgress(fraction.coerceAtMost(0.90f))
+        val totalImages = database.withTransaction {
+            // 新索引全部成功前事务不会提交，失败或取消时旧索引自动恢复。
+            imageDao.deleteByRepository(repoId)
+            albumDao.deleteByRepository(repoId)
+            onProgress(0.42f)
+            albumEntities.forEach { entity ->
+                albumIdMap[entity.directoryPath] = albumDao.insert(entity)
             }
-        )
+            AppLogger.i(TAG, "相册已插入(事务内): ${albumIdMap.size} 个")
+            fileScanner.processSpool(
+                spoolFile = collected.spoolFile,
+                totalImages = collected.imageCount,
+                repositoryId = repoId,
+                albumIdMap = albumIdMap,
+                imageDao = imageDao,
+                onProgress = { processed, total ->
+                    val fraction = if (total > 0) 0.48f + processed.toFloat() / total * 0.42f else 0.90f
+                    onProgress(fraction.coerceAtMost(0.90f))
+                    onStatus(ScanStatus("建立索引", total, processed, total, collected.directoryCount))
+                }
+            )
+        }
 
         onProgress(0.90f)
 
@@ -126,7 +138,13 @@ class ScanImagesUseCase(
         repositoryDao.updateScanInfo(repoId, System.currentTimeMillis(), totalImages)
 
         onProgress(1f)
+        onStatus(ScanStatus("完成", totalImages, totalImages, totalImages, collected.directoryCount))
         totalImages
+        } finally {
+            if (spoolFile.exists() && !spoolFile.delete()) {
+                AppLogger.w(TAG, "扫描临时文件删除失败: ${spoolFile.name}")
+            }
+        }
     }
 
     /**
@@ -138,6 +156,19 @@ class ScanImagesUseCase(
         rootUriString: String
     ): List<AlbumEntity> {
         val albumPathMap = mutableMapOf<String, AlbumEntity>()
+        val rootDocumentPath = try {
+            DocumentsContract.buildDocumentUriUsingTree(
+                Uri.parse(rootUriString),
+                DocumentsContract.getTreeDocumentId(Uri.parse(rootUriString))
+            ).toString()
+        } catch (_: Exception) {
+            rootUriString
+        }
+        albumPathMap[rootDocumentPath] = AlbumEntity(
+            name = Uri.decode(rootDocumentPath.substringAfterLast('/')).ifBlank { "根目录" },
+            directoryPath = rootDocumentPath,
+            repositoryId = repositoryId
+        )
 
         for ((index, dirUri) in directories.withIndex()) {
             val dirPath = dirUri.toString()

@@ -69,6 +69,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
 
+    // 长时间扫描：前台 WorkManager 在息屏、切后台和进程重建后继续调度
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
+
     // Room (KSP for Kotlin 2.0+)
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")

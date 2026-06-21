@@ -23,8 +23,10 @@ import com.remophoto.data.server.MdnsDiscoveryService
 import com.remophoto.data.server.WifiLockManager
 import com.remophoto.di.dependencies
 import com.remophoto.util.AppLogger
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 添加远程仓库对话框
@@ -47,7 +49,7 @@ fun AddRemoteRepoDialog(
     val tabs = listOf("发现设备", "手动添加")
 
     // mDNS 发现
-    val discovery = remember { MdnsDiscoveryService(WifiLockManager(context)) }
+    val discovery = remember { MdnsDiscoveryService(context, WifiLockManager(context)) }
     val devices by discovery.devices.collectAsState()
     val isScanning by discovery.isScanning.collectAsState()
 
@@ -63,13 +65,16 @@ fun AddRemoteRepoDialog(
     // 启动/停止 mDNS 发现
     LaunchedEffect(Unit) {
         AppLogger.i("AddRemoteRepo", "对话框已打开，启动 mDNS 发现...")
-        val ok = discovery.start()
-        AppLogger.i("AddRemoteRepo", "mDNS 发现启动结果: $ok, isScanning=$isScanning")
-    }
-    DisposableEffect(Unit) {
-        onDispose {
-            AppLogger.i("AddRemoteRepo", "对话框关闭，停止 mDNS 发现")
-            scope.launch { discovery.stop() }
+        try {
+            val ok = discovery.start()
+            AppLogger.i("AddRemoteRepo", "mDNS 发现启动结果: $ok, isScanning=$isScanning")
+            awaitCancellation()
+        } finally {
+            // rememberCoroutineScope 会随 Composable 一起取消，不能用于 onDispose 中的挂起清理。
+            withContext(NonCancellable) {
+                AppLogger.i("AddRemoteRepo", "对话框关闭，可靠停止 mDNS 发现")
+                discovery.stop()
+            }
         }
     }
 
@@ -100,14 +105,15 @@ fun AddRemoteRepoDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = if (isScanning) "正在扫描..." else "可用设备: ${devices.size}",
+                                text = if (isScanning && devices.isEmpty()) {
+                                    "正在扫描..."
+                                } else {
+                                    "可用设备: ${devices.size}"
+                                },
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             IconButton(onClick = {
-                                scope.launch {
-                                    discovery.stop()
-                                    discovery.start()
-                                }
+                                discovery.refresh()
                             }) {
                                 Icon(Icons.Default.Refresh, "刷新")
                             }
@@ -139,7 +145,6 @@ fun AddRemoteRepoDialog(
                                                 displayName = device.displayName,
                                                 onSuccess = {
                                                     connecting = false
-                                                    scope.launch { discovery.stop() }
                                                     onRepoAdded()
                                                     onDismiss()
                                                 },
