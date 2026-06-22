@@ -205,22 +205,26 @@ class HttpServerManager(private val context: Context) {
                 }
                 // 只共享本机 SAF 仓库。远程同步数据若再次暴露，会形成 A→B→A 回环。
                 val localAlbums = albums.filter { it.repositoryId in localRepoIds }
+                val coverByAlbumId = if (localRepoIds.isEmpty()) {
+                    emptyMap()
+                } else {
+                    runBlocking { deps.imageDao.getAlbumCoverMetadata(localRepoIds.toList()) }
+                        .associate { it.albumId to it.coverImageId }
+                }
                 AppLogger.i(
                     TAG,
                     "/api/albums: 本地相册=${localAlbums.size}, " +
                         "已拦截远程相册=${albums.size - localAlbums.size}"
                 )
                 val json = buildJsonArray(localAlbums) { album ->
-                    val coverImageId = runBlocking {
-                        deps.imageDao.getCoverImageId(album.id, album.coverImagePath)
-                    }
                     obj(
                         "id" to album.id,
                         "name" to album.name,
                         "imageCount" to album.imageCount,
                         "repositoryId" to album.repositoryId,
                         "parentAlbumId" to album.parentAlbumId,
-                        "coverImageId" to coverImageId
+                        "coverImageId" to coverByAlbumId[album.id],
+                        "lastModified" to album.lastModified
                     )
                 }
                 jsonResponse(Response.Status.OK, """{"albums":$json}""")

@@ -68,7 +68,8 @@ class CreateAlbumsUseCase(
                 parentAlbumId = null,
                 coverImagePath = null,
                 sortOrder = null,
-                imageCount = rootImages.size
+                imageCount = rootImages.size,
+                lastModified = rootImages.maxOfOrNull { it.lastModified } ?: 0L
             )
             val rootAlbumId = albumDao.insert(rootAlbum)
             albumIdMap[rootUriString] = rootAlbumId
@@ -104,7 +105,8 @@ class CreateAlbumsUseCase(
                 parentAlbumId = parentAlbumId,
                 coverImagePath = null,
                 sortOrder = null,
-                imageCount = dirImages.size
+                imageCount = dirImages.size,
+                lastModified = dirImages.maxOfOrNull { it.lastModified } ?: 0L
             )
 
             val albumId = albumDao.insert(albumEntity)

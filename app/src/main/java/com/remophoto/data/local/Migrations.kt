@@ -97,4 +97,15 @@ object Migrations {
             )
         }
     }
+
+    /** v3 → v4: 缓存相册最近修改时间，迁移时由已有图片索引回填。 */
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE albums ADD COLUMN last_modified INTEGER NOT NULL DEFAULT 0")
+            db.execSQL(
+                "UPDATE albums SET last_modified = COALESCE(" +
+                    "(SELECT MAX(images.last_modified) FROM images WHERE images.album_id = albums.id), 0)"
+            )
+        }
+    }
 }

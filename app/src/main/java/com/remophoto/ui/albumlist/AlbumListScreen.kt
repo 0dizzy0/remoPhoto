@@ -24,6 +24,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -40,6 +42,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.remophoto.data.local.entity.CategoryEntity
 import com.remophoto.data.local.entity.RepositoryEntity
 import com.remophoto.domain.model.Album
@@ -75,11 +78,13 @@ fun AlbumListScreen(
     val isEmpty by viewModel.isEmpty.collectAsState()
     val isGridView by viewModel.isGridView.collectAsState()
     val currentPage by viewModel.currentPage.collectAsState()
+    val totalPages by viewModel.totalPages.collectAsState()
     val activeFilterCategoryName by viewModel.filterCategoryName.collectAsState()
     val pagedAlbums by viewModel.pagedAlbums.collectAsState()
     val selectedRepoId by viewModel.selectedRepoId.collectAsState()
     val selectedRepoName by viewModel.selectedRepoName.collectAsState()
     val repoList by viewModel.repoList.collectAsState()
+    val isRefreshingRemote by viewModel.isRefreshingRemote.collectAsState()
 
     // 多选状态
     val selectionMode by viewModel.selectionMode.collectAsState()
@@ -91,6 +96,10 @@ fun AlbumListScreen(
 
     // Phase 4: 添加远程仓库对话框
     var showAddRemoteDialog by remember { mutableStateOf(false) }
+    var showSearchDialog by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     // 外部传入的分类筛选参数
     LaunchedEffect(categoryId) {
@@ -128,6 +137,7 @@ fun AlbumListScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             if (selectionMode) {
                 // 多选模式 TopBar
@@ -195,6 +205,27 @@ fun AlbumListScreen(
                         }
                     },
                     actions = {
+                        if (showAlbumLevel && browsingAlbumId == null) {
+                            val selectedRepo = repoList.find { it.id == selectedRepoId }
+                            if (selectedRepo?.remoteConnectionId != null) {
+                                IconButton(
+                                    onClick = viewModel::refreshSelectedRemoteRepository,
+                                    enabled = !isRefreshingRemote
+                                ) {
+                                    if (isRefreshingRemote) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(24.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        Icon(Icons.Default.Refresh, contentDescription = "刷新远程相册缓存")
+                                    }
+                                }
+                            }
+                            IconButton(onClick = { showSearchDialog = true }) {
+                                Icon(Icons.Default.Search, contentDescription = "查找相册")
+                            }
+                        }
                         // 布局切换按钮
                         IconButton(onClick = {
                             AppLogger.i(TAG, "点击布局切换 (当前=${if (isGridView) "网格" else "列表"})")
@@ -215,25 +246,26 @@ fun AlbumListScreen(
                         ) {
                             Text("🏷️", modifier = Modifier.padding(4.dp))
                         }
-                        // 仓库管理入口
-                        IconButton(
-                            onClick = {
-                                AppLogger.i(TAG, "点击仓库管理按钮")
-                                onRepositoryManagerClick()
-                            },
-                            modifier = Modifier.semantics { contentDescription = "仓库管理" }
-                        ) {
-                            Text("📁", modifier = Modifier.padding(4.dp))
-                        }
-                        // 设置入口
-                        IconButton(
-                            onClick = {
-                                AppLogger.i(TAG, "点击设置按钮 (顶部栏入口)")
-                                onSettingsClick()
-                            },
-                            modifier = Modifier.semantics { contentDescription = "设置" }
-                        ) {
-                            Text("⚙️", modifier = Modifier.padding(4.dp))
+                        if (showRepoLevel) {
+                            // 仓库和设置入口只在仓库层显示；相册层可使用底部导航。
+                            IconButton(
+                                onClick = {
+                                    AppLogger.i(TAG, "点击仓库管理按钮")
+                                    onRepositoryManagerClick()
+                                },
+                                modifier = Modifier.semantics { contentDescription = "仓库管理" }
+                            ) {
+                                Text("📁", modifier = Modifier.padding(4.dp))
+                            }
+                            IconButton(
+                                onClick = {
+                                    AppLogger.i(TAG, "点击设置按钮 (顶部栏入口)")
+                                    onSettingsClick()
+                                },
+                                modifier = Modifier.semantics { contentDescription = "设置" }
+                            ) {
+                                Text("⚙️", modifier = Modifier.padding(4.dp))
+                            }
                         }
                     }
                 )
@@ -242,7 +274,6 @@ fun AlbumListScreen(
         bottomBar = {
             // 仅在相册根级（非仓库列表、非子相册浏览、非空）时显示分页
             if (showAlbumLevel && browsingAlbumId == null) {
-                val totalPages = viewModel.totalPages()
                 if (totalPages > 1) {
                     PageNavigator(
                         currentPage = currentPage,
@@ -542,6 +573,41 @@ fun AlbumListScreen(
                 }
             }
         }
+    }
+
+    if (showSearchDialog) {
+        AlertDialog(
+            onDismissRequest = { showSearchDialog = false },
+            title = { Text("查找相册") },
+            text = {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text("相册名称") },
+                    supportingText = { Text("按名称模糊查找，只跳转到所在页") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = searchQuery.isNotBlank(),
+                    onClick = {
+                        val found = viewModel.locateAlbumByName(searchQuery)
+                        showSearchDialog = false
+                        scope.launch {
+                            snackbarHostState.showSnackbar(
+                                found?.let { "已定位到“${it.name}”所在页" }
+                                    ?: "未找到名称包含“${searchQuery.trim()}”的相册"
+                            )
+                        }
+                    }
+                ) { Text("查找") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSearchDialog = false }) { Text("取消") }
+            }
+        )
     }
 
     // Phase 4: 添加远程仓库对话框

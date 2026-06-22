@@ -136,10 +136,9 @@ fun NavGraph(
                                 AppLogger.i(TAG, "📱 底部Tab点击: 相册列表 (from=$currentRoute)")
                                 navController.navigate(Screen.AlbumList.BASE_ROUTE) {
                                     popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
+                                        inclusive = false
                                     }
                                     launchSingleTop = true
-                                    restoreState = true
                                 }
                             }
                         }
@@ -153,10 +152,9 @@ fun NavGraph(
                                 AppLogger.i(TAG, "📱 底部Tab点击: 设置 (from=$currentRoute)")
                                 navController.navigate(Screen.Settings.ROUTE) {
                                     popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
+                                        inclusive = false
                                     }
                                     launchSingleTop = true
-                                    restoreState = true
                                 }
                             }
                         }

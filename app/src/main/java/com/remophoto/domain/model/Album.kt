@@ -15,6 +15,7 @@ data class Album(
     val coverImagePath: String? = null,
     val sortOrder: SortOrder? = null,
     val imageCount: Int = 0,
+    val lastModified: Long = 0L,
     /** 子相册列表（多层级展示） */
     val children: List<Album> = emptyList(),
     /** 嵌套深度（0 = 根级） */

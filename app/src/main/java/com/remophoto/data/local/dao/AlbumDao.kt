@@ -22,6 +22,10 @@ interface AlbumDao {
     @Query("SELECT * FROM albums WHERE repository_id = :repoId ORDER BY name ASC")
     fun getAlbumsByRepository(repoId: Long): Flow<List<AlbumEntity>>
 
+    /** 按仓库 ID 查询全部相册（用于一次性构建完整层级和分页） */
+    @Query("SELECT * FROM albums WHERE repository_id = :repoId ORDER BY name ASC")
+    suspend fun getAlbumsByRepositoryList(repoId: Long): List<AlbumEntity>
+
     /** 按父相册 ID 查询子相册 */
     @Query("SELECT * FROM albums WHERE parent_album_id = :parentId ORDER BY name ASC")
     suspend fun getAlbumsByParent(parentId: Long): List<AlbumEntity>
@@ -74,9 +78,31 @@ interface AlbumDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(album: AlbumEntity): Long
 
+    /** 更新相册并保留主键以及相册-分类关联 */
+    @Update
+    suspend fun update(album: AlbumEntity)
+
+    @Update
+    suspend fun updateAll(albums: List<AlbumEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertAll(albums: List<AlbumEntity>): List<Long>
+
     /** 删除相册 */
     @Delete
     suspend fun delete(album: AlbumEntity)
+
+    @Delete
+    suspend fun deleteAll(albums: List<AlbumEntity>)
+
+    /** 由图片索引一次性回填相册数量和最近修改时间，避免逐相册 N+1 查询。 */
+    @Query(
+        "UPDATE albums SET " +
+            "image_count = (SELECT COUNT(*) FROM images WHERE images.album_id = albums.id), " +
+            "last_modified = COALESCE((SELECT MAX(images.last_modified) FROM images WHERE images.album_id = albums.id), 0) " +
+            "WHERE repository_id = :repoId"
+    )
+    suspend fun updateStatsFromImages(repoId: Long)
 
     /** 删除指定仓库下所有相册 */
     @Query("DELETE FROM albums WHERE repository_id = :repoId")

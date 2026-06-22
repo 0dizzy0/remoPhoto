@@ -183,7 +183,8 @@ data class RemoteAlbumDto(
     val imageCount: Int,
     val repositoryId: Long,
     val parentAlbumId: Long? = null,
-    val coverImageId: Long? = null
+    val coverImageId: Long? = null,
+    val lastModified: Long = 0L
 ) {
     companion object {
         fun fromJson(json: JSONObject): RemoteAlbumDto = RemoteAlbumDto(
@@ -197,7 +198,9 @@ data class RemoteAlbumDto(
                 null
             } else {
                 json.getLong("coverImageId")
-            }
+            },
+            // 旧服务端没有此字段时保持兼容。
+            lastModified = json.optLong("lastModified", 0L)
         )
     }
 }

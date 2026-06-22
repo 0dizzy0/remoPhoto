@@ -45,5 +45,9 @@ data class AlbumEntity(
 
     /** 图片数量（仅本目录，不含子相册） */
     @ColumnInfo(name = "image_count")
-    val imageCount: Int = 0
+    val imageCount: Int = 0,
+
+    /** 相册内最近一张图片的修改时间（毫秒），0 = 未知 */
+    @ColumnInfo(name = "last_modified")
+    val lastModified: Long = 0L
 )

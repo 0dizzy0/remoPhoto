@@ -3,6 +3,8 @@ package com.remophoto.domain.usecase
 import com.remophoto.data.local.dao.AlbumDao
 import com.remophoto.data.local.dao.ImageDao
 import com.remophoto.data.local.dao.RepositoryDao
+import com.remophoto.data.local.AppDatabase
+import androidx.room.withTransaction
 import com.remophoto.data.local.entity.AlbumEntity
 import com.remophoto.data.local.entity.ConnectionStatus
 import com.remophoto.data.local.entity.ImageEntity
@@ -21,6 +23,7 @@ import kotlinx.coroutines.withContext
  * 支持幂等操作——重复同步不会产生重复数据。
  */
 class SyncRemoteRepositoryUseCase(
+    private val database: AppDatabase,
     private val albumDao: AlbumDao,
     private val imageDao: ImageDao,
     private val repositoryDao: RepositoryDao,
@@ -42,47 +45,81 @@ class SyncRemoteRepositoryUseCase(
         connection: RemoteConnectionEntity,
         localRepoId: Long
     ): Int = withContext(Dispatchers.IO) {
+        val startedAt = System.currentTimeMillis()
         AppLogger.i(TAG, "开始同步远程相册: ${connection.host}:${connection.port}")
 
         val dtos: List<RemoteAlbumDto> = remoteRepository.fetchAlbums(connection)
-
-        // 远程相册不能再次作为本机数据源对外共享。同步时完整替换该远程仓库
-        // 的索引，避免旧 albumId 对应的图片残留并在反复浏览后持续重复。
-        imageDao.deleteByRepository(localRepoId)
-        albumDao.deleteByRepository(localRepoId)
-
-        // 第一遍插入并建立“服务端相册 ID -> 本地相册 ID”映射。
+        val existingAlbums = albumDao.getAlbumsByRepositoryList(localRepoId)
+        val existingByPath = existingAlbums.associateBy { it.directoryPath }
         val localIdByRemoteId = mutableMapOf<Long, Long>()
-        dtos.forEach { dto ->
-            val localId = albumDao.insert(AlbumEntity(
-                id = 0,
+        val baseEntityByRemoteId = mutableMapOf<Long, AlbumEntity>()
+        val existingUpdates = mutableListOf<AlbumEntity>()
+        val newDtos = mutableListOf<RemoteAlbumDto>()
+        val newEntities = mutableListOf<AlbumEntity>()
+
+        for (dto in dtos) {
+            val path = "remote://${connection.host}:${connection.port}/album/${dto.id}"
+            val existing = existingByPath[path]
+            val entity = AlbumEntity(
+                id = existing?.id ?: 0,
                 name = dto.name,
-                directoryPath = "remote://${connection.host}:${connection.port}/album/${dto.id}",
+                directoryPath = path,
                 repositoryId = localRepoId,
                 parentAlbumId = null,
                 coverImagePath = dto.coverImageId?.let {
                     "http://${connection.host}:${connection.port}/api/image/$it/thumb"
-                },
-                imageCount = dto.imageCount
-            ))
-            localIdByRemoteId[dto.id] = localId
+                } ?: existing?.coverImagePath,
+                sortOrder = existing?.sortOrder,
+                imageCount = dto.imageCount,
+                lastModified = dto.lastModified.takeIf { it > 0L } ?: existing?.lastModified ?: 0L
+            )
+            baseEntityByRemoteId[dto.id] = entity
+            if (existing == null) {
+                newDtos += dto
+                newEntities += entity
+            } else {
+                localIdByRemoteId[dto.id] = existing.id
+                existingUpdates += entity
+            }
         }
 
-        // 第二遍修复父子关系。直接写服务端 parentAlbumId 会与本地自增 ID 混用。
-        dtos.forEach { dto ->
-            val localId = localIdByRemoteId[dto.id] ?: return@forEach
-            val localParentId = dto.parentAlbumId?.let(localIdByRemoteId::get)
-            albumDao.updateParentAlbum(localId, localParentId)
+        var staleAlbums: List<AlbumEntity> = emptyList()
+        database.withTransaction {
+            if (existingUpdates.isNotEmpty()) albumDao.updateAll(existingUpdates)
+            if (newEntities.isNotEmpty()) {
+                val insertedIds = albumDao.insertAll(newEntities)
+                newDtos.zip(insertedIds).forEach { (dto, localId) ->
+                    localIdByRemoteId[dto.id] = localId
+                }
+            }
+
+            // 仅有父相册的记录需要第二次批量更新。
+            val parentUpdates = dtos.mapNotNull { dto ->
+                val parentId = dto.parentAlbumId?.let(localIdByRemoteId::get) ?: return@mapNotNull null
+                val localId = localIdByRemoteId[dto.id] ?: return@mapNotNull null
+                baseEntityByRemoteId[dto.id]?.copy(id = localId, parentAlbumId = parentId)
+            }
+            if (parentUpdates.isNotEmpty()) albumDao.updateAll(parentUpdates)
+
+            val retainedIds = localIdByRemoteId.values.toSet()
+            staleAlbums = existingAlbums.filter { it.id !in retainedIds }
+            if (staleAlbums.isNotEmpty()) {
+                staleAlbums.forEach { imageDao.deleteByAlbum(it.id) }
+                albumDao.deleteAll(staleAlbums)
+            }
+
+            val totalImages = dtos.sumOf { it.imageCount }
+            repositoryDao.updateScanInfo(localRepoId, System.currentTimeMillis(), totalImages)
         }
 
         val totalImages = dtos.sumOf { it.imageCount }
-        repositoryDao.updateImageCount(localRepoId, totalImages)
-
         AppLogger.i(
             TAG,
             "远程相册同步完成: ${dtos.size} 个相册, $totalImages 张图片, " +
                 "父子映射=${dtos.count { it.parentAlbumId != null }}, " +
-                "封面=${dtos.count { it.coverImageId != null }}"
+                "封面=${dtos.count { it.coverImageId != null }}, " +
+                "复用=${existingUpdates.size}, 新增=${newEntities.size}, 删除=${staleAlbums.size}, " +
+                "elapsedMs=${System.currentTimeMillis() - startedAt}"
         )
         dtos.size
     }

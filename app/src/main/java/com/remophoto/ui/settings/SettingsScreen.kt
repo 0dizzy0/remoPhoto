@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.remophoto.domain.model.SortOrder
+import com.remophoto.domain.model.AlbumSortOrder
 import com.remophoto.ui.components.SettingsInfoRow
 import com.remophoto.ui.components.SettingsRow
 import com.remophoto.ui.components.SettingsSectionHeader
@@ -62,6 +63,7 @@ fun SettingsScreen(
     val darkModeType by viewModel.darkModeType.collectAsState()
     val highContrast by viewModel.highContrast.collectAsState()
     val sortOrder by viewModel.defaultSortOrder.collectAsState()
+    val albumSortOrder by viewModel.albumSortOrder.collectAsState()
     val albumsPerPage by viewModel.albumsPerPage.collectAsState()
     val slideshowInterval by viewModel.slideshowInterval.collectAsState()
     val useVolumeKeys by viewModel.useVolumeKeys.collectAsState()
@@ -74,9 +76,14 @@ fun SettingsScreen(
     var showThemeMenu by remember { mutableStateOf(false) }
     var showDarkModeTypeMenu by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
+    var showAlbumSortMenu by remember { mutableStateOf(false) }
     var showIntervalMenu by remember { mutableStateOf(false) }
     var showPageCountMenu by remember { mutableStateOf(false) }
     var showPortMenu by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        viewModel.refreshStorageInfo()
+    }
 
     Scaffold(
         topBar = {
@@ -179,7 +186,7 @@ fun SettingsScreen(
             // 默认排序
             Box {
                 SettingsRow(
-                    label = "默认排序",
+                    label = "图片默认排序",
                     value = sortOrder.displayName
                 ) {
                     showSortMenu = true
@@ -192,6 +199,29 @@ fun SettingsScreen(
                         DropdownMenuItem(
                             text = { Text(order.displayName) },
                             onClick = { AppLogger.i(TAG, "设置排序: ${order.name}"); viewModel.setDefaultSortOrder(order); showSortMenu = false }
+                        )
+                    }
+                }
+            }
+
+            Box {
+                SettingsRow(
+                    label = "相册列表排序",
+                    value = albumSortOrder.displayName
+                ) {
+                    showAlbumSortMenu = true
+                }
+                DropdownMenu(
+                    expanded = showAlbumSortMenu,
+                    onDismissRequest = { showAlbumSortMenu = false }
+                ) {
+                    AlbumSortOrder.entries.forEach { order ->
+                        DropdownMenuItem(
+                            text = { Text(order.displayName) },
+                            onClick = {
+                                viewModel.setAlbumSortOrder(order)
+                                showAlbumSortMenu = false
+                            }
                         )
                     }
                 }
@@ -344,7 +374,7 @@ fun SettingsScreen(
             )
 
             SettingsInfoRow(
-                label = "占用空间",
+                label = "图片文件总大小",
                 value = formatFileSize(totalStorageSize)
             )
 

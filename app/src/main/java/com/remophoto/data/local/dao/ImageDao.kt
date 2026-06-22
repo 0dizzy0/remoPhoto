@@ -4,6 +4,11 @@ import androidx.room.*
 import com.remophoto.data.local.entity.ImageEntity
 import kotlinx.coroutines.flow.Flow
 
+data class AlbumCoverMetadata(
+    val albumId: Long,
+    val coverImageId: Long?
+)
+
 /**
  * 图片索引 DAO
  */
@@ -49,6 +54,19 @@ interface ImageDao {
             "file_name COLLATE NOCASE ASC LIMIT 1"
     )
     suspend fun getCoverImageId(albumId: Long, coverPath: String?): Long?
+
+    /** 批量查询本地仓库相册封面，避免 HTTP /api/albums 的 N+1 Room 调用。 */
+    @Query(
+        "SELECT a.id AS albumId, " +
+            "COALESCE(" +
+            "(SELECT custom.id FROM images custom WHERE custom.album_id = a.id " +
+            "AND custom.file_path = a.cover_image_path LIMIT 1), " +
+            "(SELECT first_image.id FROM images first_image WHERE first_image.album_id = a.id " +
+            "ORDER BY first_image.file_name COLLATE NOCASE ASC LIMIT 1)" +
+            ") AS coverImageId " +
+            "FROM albums a WHERE a.repository_id IN (:repositoryIds)"
+    )
+    suspend fun getAlbumCoverMetadata(repositoryIds: List<Long>): List<AlbumCoverMetadata>
 
     /** 根据文件路径查询图片 */
     @Query("SELECT * FROM images WHERE file_path = :filePath LIMIT 1")

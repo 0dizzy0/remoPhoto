@@ -14,6 +14,7 @@ import com.remophoto.data.repository.SettingsRepository
 import com.remophoto.data.server.HttpServerForegroundService
 import com.remophoto.data.server.HttpServerManager
 import com.remophoto.domain.model.SortOrder
+import com.remophoto.domain.model.AlbumSortOrder
 import com.remophoto.util.AppLogger
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.Dispatchers
@@ -39,6 +40,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private val _defaultSortOrder = MutableStateFlow(SortOrder.DEFAULT)
     val defaultSortOrder: StateFlow<SortOrder> = _defaultSortOrder.asStateFlow()
+
+    private val _albumSortOrder = MutableStateFlow(AlbumSortOrder.DEFAULT)
+    val albumSortOrder: StateFlow<AlbumSortOrder> = _albumSortOrder.asStateFlow()
 
     private val _albumsPerPage = MutableStateFlow(20)
     val albumsPerPage: StateFlow<Int> = _albumsPerPage.asStateFlow()
@@ -98,6 +102,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             settingsRepository.defaultSortOrder.collect { _defaultSortOrder.value = it }
         }
         viewModelScope.launch {
+            settingsRepository.albumSortOrder.collect { _albumSortOrder.value = it }
+        }
+        viewModelScope.launch {
             settingsRepository.albumsPerPage.collect { _albumsPerPage.value = it }
         }
         viewModelScope.launch {
@@ -131,6 +138,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
 
         AppLogger.i(TAG, "SettingsViewModel 初始化完成")
+        refreshStorageInfo()
+    }
+
+    /** 每次进入设置页时刷新，避免共享 ViewModel 长期显示初始化时的旧统计。 */
+    fun refreshStorageInfo() {
+        AppLogger.i(TAG, "刷新存储与远程缓存统计")
         loadStorageStats()
         loadRemoteCacheStats()
     }
@@ -161,6 +174,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             settingsRepository.setDefaultSortOrder(order)
             AppLogger.i(TAG, "默认排序已更新: ${order.displayName}")
+        }
+    }
+
+    fun setAlbumSortOrder(order: AlbumSortOrder) {
+        _albumSortOrder.value = order
+        viewModelScope.launch {
+            settingsRepository.setAlbumSortOrder(order)
+            AppLogger.i(TAG, "相册列表排序已更新: ${order.displayName}")
         }
     }
 
@@ -265,25 +286,34 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private fun loadRemoteCacheStats() {
         viewModelScope.launch(Dispatchers.IO) {
-            val context = getApplication<RemoPhotoApp>()
-            val thumbDir = context.cacheDir.resolve("remote_thumb_cache")
-            val imageDir = context.cacheDir.resolve("remote_image_cache")
-            _remoteThumbCacheSize.value = if (thumbDir.exists()) formatFileSize(dirSize(thumbDir)) else "空"
-            _remoteImageCacheSize.value = if (imageDir.exists()) formatFileSize(dirSize(imageDir)) else "空"
-            AppLogger.d(TAG, "远程缓存统计完成: thumb=${_remoteThumbCacheSize.value}, image=${_remoteImageCacheSize.value}")
+            _remoteThumbCacheSize.value = "计算中…"
+            _remoteImageCacheSize.value = "计算中…"
+            try {
+                val context = getApplication<RemoPhotoApp>()
+                val thumbDir = context.cacheDir.resolve("remote_thumb_cache")
+                val imageDir = context.cacheDir.resolve("remote_image_cache")
+                _remoteThumbCacheSize.value = formatFileSize(dirSize(thumbDir))
+                _remoteImageCacheSize.value = formatFileSize(dirSize(imageDir))
+                AppLogger.i(TAG, "远程缓存统计完成: thumb=${_remoteThumbCacheSize.value}, image=${_remoteImageCacheSize.value}")
+            } catch (e: Exception) {
+                _remoteThumbCacheSize.value = "读取失败"
+                _remoteImageCacheSize.value = "读取失败"
+                AppLogger.e(TAG, "远程缓存统计失败", e)
+            }
         }
     }
 
+    @OptIn(coil.annotation.ExperimentalCoilApi::class)
     fun clearRemoteCaches(context: android.content.Context) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val thumbDir = context.cacheDir.resolve("remote_thumb_cache")
-                val imageDir = context.cacheDir.resolve("remote_image_cache")
-                thumbDir.deleteRecursively()
-                imageDir.deleteRecursively()
-                _remoteThumbCacheSize.value = "空"
-                _remoteImageCacheSize.value = "空"
-                AppLogger.i(TAG, "远程缓存已清除")
+                val app = context.applicationContext as RemoPhotoApp
+                app.dependencyContainer.remoteThumbnailLoader.memoryCache?.clear()
+                app.dependencyContainer.remoteThumbnailLoader.diskCache?.clear()
+                app.dependencyContainer.remoteImageLoader.memoryCache?.clear()
+                app.dependencyContainer.remoteImageLoader.diskCache?.clear()
+                loadRemoteCacheStats()
+                AppLogger.i(TAG, "远程缩略图与原图的内存/磁盘缓存已清除")
             } catch (e: Exception) {
                 AppLogger.e(TAG, "清除远程缓存失败", e)
             }
@@ -291,8 +321,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun dirSize(dir: java.io.File): Long {
-        return if (dir.isDirectory) dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
-        else 0L
+        return if (dir.isDirectory) dir.walkTopDown().filter { it.isFile }.sumOf { it.length() } else 0L
     }
 
     private fun formatFileSize(bytes: Long): String {

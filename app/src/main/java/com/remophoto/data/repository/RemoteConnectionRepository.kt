@@ -52,11 +52,17 @@ class RemoteConnectionRepository(
      * @return 远程相册 DTO 列表
      */
     suspend fun fetchAlbums(connection: RemoteConnectionEntity): List<RemoteAlbumDto> {
-        return retry("fetchAlbums ${connection.host}:${connection.port}") {
-            val albums = httpClient.getAlbums(connection.host, connection.port)
-            updateConnectionStatus(connection.id, ConnectionStatus.CONNECTED)
-            AppLogger.i(TAG, "获取相册列表成功: ${albums.size} 个相册")
-            albums
+        return try {
+            retry("fetchAlbums ${connection.host}:${connection.port}") {
+                val albums = httpClient.getAlbums(connection.host, connection.port)
+                updateConnectionStatus(connection.id, ConnectionStatus.CONNECTED)
+                AppLogger.i(TAG, "获取相册列表成功: ${albums.size} 个相册")
+                albums
+            }
+        } catch (e: Exception) {
+            updateConnectionStatus(connection.id, ConnectionStatus.ERROR)
+            AppLogger.e(TAG, "获取相册列表最终失败，连接已标记为 ERROR", e)
+            throw e
         }
     }
 

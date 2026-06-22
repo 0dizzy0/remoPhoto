@@ -16,6 +16,8 @@ class AlbumRepository(private val albumDao: AlbumDao) {
 
     fun getAlbumsByRepository(repoId: Long) = albumDao.getAlbumsByRepository(repoId)
 
+    suspend fun getAlbumsByRepositoryList(repoId: Long) = albumDao.getAlbumsByRepositoryList(repoId)
+
     suspend fun getAlbumsByParent(parentId: Long) = albumDao.getAlbumsByParent(parentId)
 
     fun getRootAlbums() = albumDao.getRootAlbums()

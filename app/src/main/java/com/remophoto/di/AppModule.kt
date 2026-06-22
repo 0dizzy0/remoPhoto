@@ -95,7 +95,7 @@ class DependencyContainer(private val app: RemoPhotoApp) {
     }
 
     val syncRemoteRepositoryUseCase: SyncRemoteRepositoryUseCase by lazy {
-        SyncRemoteRepositoryUseCase(albumDao, imageDao, repositoryDao, remoteConnectionRepository)
+        SyncRemoteRepositoryUseCase(database, albumDao, imageDao, repositoryDao, remoteConnectionRepository)
     }
 
     // PermissionHelper 需要 Activity 实例，不在此处创建

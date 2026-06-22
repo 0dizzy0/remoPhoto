@@ -121,7 +121,7 @@ class ScanImagesUseCase(
 
         // ===== 阶段 3：统计更新 =====
 
-        updateAlbumImageCounts()
+        updateAlbumImageStats(repoId)
         AppLogger.i(TAG, "开始封面选取: 共 ${albumIdMap.size} 个相册")
         albumCoverManager?.autoSelectAllCovers()
         // 验证封面设置结果
@@ -245,7 +245,7 @@ class ScanImagesUseCase(
         onProgress(0.9f)
 
         // 更新相册数量
-        updateAlbumImageCounts()
+        updateAlbumImageStats(repoId)
 
         // 更新仓库扫描信息
         val totalImages = imageDao.getImageCountByRepository(repoId)
@@ -305,14 +305,9 @@ class ScanImagesUseCase(
     /**
      * 更新所有相册的图片数量统计
      */
-    private suspend fun updateAlbumImageCounts() {
-        val allAlbums = albumDao.getAllAlbumsList()
-        for (album in allAlbums) {
-            val count = imageDao.getImageCountByAlbum(album.id)
-            if (count != album.imageCount) {
-                albumDao.updateImageCount(album.id, count)
-            }
-        }
+    private suspend fun updateAlbumImageStats(repoId: Long) {
+        albumDao.updateStatsFromImages(repoId)
+        AppLogger.i(TAG, "相册数量与修改时间已批量回填: repoId=$repoId")
     }
 
     companion object {

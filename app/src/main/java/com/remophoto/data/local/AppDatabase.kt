@@ -36,7 +36,7 @@ import com.remophoto.data.local.entity.UserRepositoryAccess
         UserEntity::class,
         UserRepositoryAccess::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -48,7 +48,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun remoteConnectionDao(): RemoteConnectionDao
 
     companion object {
-        const val SCHEMA_VERSION = 3
+        const val SCHEMA_VERSION = 4
         private const val DATABASE_NAME = "remophoto.db"
 
         @Volatile
@@ -83,7 +83,11 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 DATABASE_NAME
             )
-                .addMigrations(Migrations.MIGRATION_1_2, Migrations.MIGRATION_2_3)
+                .addMigrations(
+                    Migrations.MIGRATION_1_2,
+                    Migrations.MIGRATION_2_3,
+                    Migrations.MIGRATION_3_4
+                )
                 .build()
         }
     }

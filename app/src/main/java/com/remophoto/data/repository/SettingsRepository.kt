@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.remophoto.domain.model.SortOrder
+import com.remophoto.domain.model.AlbumSortOrder
 import com.remophoto.util.Constants
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -23,6 +24,7 @@ class SettingsRepository(private val context: Context) {
 
     companion object {
         private val KEY_DEFAULT_SORT_ORDER = stringPreferencesKey("default_sort_order")
+        private val KEY_ALBUM_SORT_ORDER = stringPreferencesKey("album_sort_order")
         private val KEY_ALBUMS_PER_PAGE = intPreferencesKey("albums_per_page")
         private val KEY_SLIDESHOW_INTERVAL = intPreferencesKey("slideshow_interval")
         private val KEY_USE_VOLUME_KEYS = booleanPreferencesKey("use_volume_keys")
@@ -38,6 +40,11 @@ class SettingsRepository(private val context: Context) {
     /** 默认排序方式 */
     val defaultSortOrder: Flow<SortOrder> = context.dataStore.data.map { prefs ->
         SortOrder.fromName(prefs[KEY_DEFAULT_SORT_ORDER])
+    }
+
+    /** 相册列表排序（不影响相册内图片排序） */
+    val albumSortOrder: Flow<AlbumSortOrder> = context.dataStore.data.map { prefs ->
+        AlbumSortOrder.fromName(prefs[KEY_ALBUM_SORT_ORDER])
     }
 
     /** 每页相册数量 */
@@ -91,6 +98,10 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setDefaultSortOrder(order: SortOrder) {
         context.dataStore.edit { it[KEY_DEFAULT_SORT_ORDER] = order.name }
+    }
+
+    suspend fun setAlbumSortOrder(order: AlbumSortOrder) {
+        context.dataStore.edit { it[KEY_ALBUM_SORT_ORDER] = order.name }
     }
 
     suspend fun setAlbumsPerPage(count: Int) {
