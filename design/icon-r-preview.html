@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RemoPhoto App Icon Preview</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #162028;
+      --muted: #69747f;
+      --line: #d8dee5;
+      --page: #f5f7f9;
+      --panel: #ffffff;
+      --green: #4cc6a7;
+      --blue: #4f8ff7;
+      --yellow: #f2c862;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+      color: var(--ink);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.24)),
+        var(--page);
+    }
+
+    main {
+      width: min(1180px, calc(100vw - 40px));
+      margin: 0 auto;
+      padding: 36px 0 48px;
+    }
+
+    header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 26px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+      line-height: 1.15;
+      font-weight: 750;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .note {
+      max-width: 520px;
+      text-align: right;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: 0 16px 36px rgba(30, 40, 52, 0.08);
+    }
+
+    .card.primary {
+      border-color: rgba(76, 198, 167, 0.55);
+      box-shadow: 0 18px 44px rgba(38, 117, 101, 0.13);
+    }
+
+    .card h2 {
+      margin: 0 0 6px;
+      font-size: 16px;
+      line-height: 1.3;
+      font-weight: 720;
+      letter-spacing: 0;
+    }
+
+    .stage {
+      display: grid;
+      place-items: center;
+      min-height: 250px;
+      margin: 16px 0 18px;
+      border-radius: 8px;
+      background:
+        linear-gradient(45deg, #edf1f5 25%, transparent 25%),
+        linear-gradient(-45deg, #edf1f5 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #edf1f5 75%),
+        linear-gradient(-45deg, transparent 75%, #edf1f5 75%);
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+      background-size: 20px 20px;
+    }
+
+    .icon-xl {
+      width: 180px;
+      height: 180px;
+      filter: drop-shadow(0 18px 24px rgba(20, 31, 43, 0.22));
+    }
+
+    .sizes {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-height: 78px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+    }
+
+    .sizes svg {
+      flex: 0 0 auto;
+      filter: drop-shadow(0 6px 8px rgba(20, 31, 43, 0.14));
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      height: 24px;
+      padding: 0 8px;
+      margin-bottom: 10px;
+      border-radius: 999px;
+      background: rgba(76, 198, 167, 0.12);
+      color: #187761;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .caption {
+      min-height: 72px;
+    }
+
+    .usage {
+      margin-top: 20px;
+      padding: 16px 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.72);
+    }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 5px;
+      background: #eaf0f5;
+      color: #24313b;
+      font-family: "Cascadia Code", Consolas, monospace;
+      font-size: 13px;
+    }
+
+    @media (max-width: 920px) {
+      header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .note {
+        text-align: left;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>RemoPhoto 图标初版</h1>
+        <p>方向：抽象 R + 相册/远程仓库语义。优先保证启动器大图标有个性，小尺寸也能辨认。</p>
+      </div>
+      <p class="note">建议先看 32px 和 16px 的识别度；如果小尺寸还能看出 R 的走势，这个方向就适合继续做 Android adaptive icon。</p>
+    </header>
+
+    <section class="grid" aria-label="icon concepts">
+      <article class="card primary">
+        <span class="tag">推荐 V1</span>
+        <h2>R / 相册卡片</h2>
+        <p class="caption">几何 R 由相册页角和路径组成，右下角的绿色卡片代表已整理的照片集合。</p>
+        <div class="stage">
+          <svg class="icon-xl" viewBox="0 0 256 256" role="img" aria-label="RemoPhoto icon version 1">
+            <defs>
+              <linearGradient id="v1-bg" x1="42" y1="24" x2="216" y2="226" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#1c2832"/>
+                <stop offset="1" stop-color="#2b3b46"/>
+              </linearGradient>
+              <linearGradient id="v1-r" x1="75" y1="54" x2="184" y2="204" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#ffffff"/>
+                <stop offset="0.38" stop-color="#f3f8fc"/>
+                <stop offset="0.7" stop-color="#d5e2ec"/>
+                <stop offset="1" stop-color="#a7b9c7"/>
+              </linearGradient>
+              <linearGradient id="v1-r-gloss" x1="72" y1="56" x2="178" y2="182" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#ffffff" stop-opacity="0.72"/>
+                <stop offset="0.34" stop-color="#ffffff" stop-opacity="0.26"/>
+                <stop offset="0.68" stop-color="#ffffff" stop-opacity="0"/>
+              </linearGradient>
+              <linearGradient id="v1-r-shade" x1="82" y1="72" x2="214" y2="218" gradientUnits="userSpaceOnUse">
+                <stop offset="0.38" stop-color="#6f8392" stop-opacity="0"/>
+                <stop offset="0.76" stop-color="#687f8e" stop-opacity="0.28"/>
+                <stop offset="1" stop-color="#455d6d" stop-opacity="0.52"/>
+              </linearGradient>
+              <linearGradient id="v1-hole" x1="120" y1="106" x2="166" y2="151" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#324a58"/>
+                <stop offset="1" stop-color="#1d2e39"/>
+              </linearGradient>
+              <linearGradient id="v1-card" x1="141" y1="145" x2="209" y2="210" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#58d2b0"/>
+                <stop offset="1" stop-color="#2aa88d"/>
+              </linearGradient>
+              <filter id="v1-r-shadow" x="42" y="42" width="196" height="194" filterUnits="userSpaceOnUse">
+                <feDropShadow dx="3" dy="8" stdDeviation="4.5" flood-color="#081018" flood-opacity="0.34"/>
+              </filter>
+            </defs>
+            <rect width="256" height="256" rx="58" fill="url(#v1-bg)"/>
+            <g transform="translate(-10 0)" filter="url(#v1-r-shadow)">
+              <path d="M74 64h75c39 0 63 22 63 55 0 26-15 45-39 52l43 41h-52l-55-55h35c17 0 28-10 28-25 0-16-12-26-31-26h-27v106H74V64Z" fill="url(#v1-r)"/>
+              <path d="M74 64h75c39 0 63 22 63 55 0 26-15 45-39 52l43 41h-52l-55-55h35c17 0 28-10 28-25 0-16-12-26-31-26h-27v106H74V64Z" fill="url(#v1-r-shade)" opacity="0.78"/>
+              <path d="M74 64h75c39 0 63 22 63 55 0 26-15 45-39 52l43 41h-52l-55-55h35c17 0 28-10 28-25 0-16-12-26-31-26h-27v106H74V64Z" fill="url(#v1-r-gloss)" opacity="0.9"/>
+              <path d="M91 80h56c27 0 45 13 50 35-10-11-26-16-48-16H99v101H91V80Z" fill="#ffffff" opacity="0.18"/>
+              <path d="M114 106h31c19 0 27 8 27 22 0 14-10 22-27 22h-31v-44Z" fill="url(#v1-hole)"/>
+              <path d="M122 116h24c10 0 16 4 18 12-3-4-9-6-18-6h-24v-6Z" fill="#ffffff" opacity="0.16"/>
+            </g>
+            <path d="M163 169h38c8 0 14 6 14 14v24c0 8-6 14-14 14h-38c-8 0-14-6-14-14v-24c0-8 6-14 14-14Z" fill="url(#v1-card)"/>
+            <path d="M159 205l13-13 9 10 7-7 15 16h-39c-4 0-7-3-7-7v-1l2 2Z" fill="#eafcf6" opacity="0.95"/>
+            <circle cx="198" cy="184" r="5" fill="#f6fbff"/>
+          </svg>
+        </div>
+        <div class="sizes">
+          <svg width="128" height="128" viewBox="0 0 256 256"><use href="#v1-symbol"></use></svg>
+          <svg width="64" height="64" viewBox="0 0 256 256"><use href="#v1-symbol"></use></svg>
+          <svg width="32" height="32" viewBox="0 0 256 256"><use href="#v1-symbol"></use></svg>
+          <svg width="16" height="16" viewBox="0 0 256 256"><use href="#v1-symbol"></use></svg>
+        </div>
+      </article>
+
+      <article class="card">
+        <span class="tag">V2</span>
+        <h2>R / 远程连接</h2>
+        <p class="caption">保留抽象 R，用一条轻量弧线表达远程访问和同步感，整体更偏工具产品。</p>
+        <div class="stage">
+          <svg class="icon-xl" viewBox="0 0 256 256" role="img" aria-label="RemoPhoto icon version 2">
+            <defs>
+              <linearGradient id="v2-bg" x1="36" y1="24" x2="220" y2="226" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#f7fbff"/>
+                <stop offset="1" stop-color="#dce8ef"/>
+              </linearGradient>
+              <linearGradient id="v2-r" x1="68" y1="54" x2="185" y2="203" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#263642"/>
+                <stop offset="1" stop-color="#111b24"/>
+              </linearGradient>
+              <linearGradient id="v2-signal" x1="149" y1="68" x2="213" y2="144" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#4f8ff7"/>
+                <stop offset="1" stop-color="#31b99d"/>
+              </linearGradient>
+            </defs>
+            <rect width="256" height="256" rx="58" fill="url(#v2-bg)"/>
+            <path d="M72 65h74c39 0 62 22 62 55 0 27-16 47-42 54l41 39h-50l-56-57h39c17 0 28-10 28-25 0-16-12-26-31-26h-26v108H72V65Z" fill="url(#v2-r)"/>
+            <path d="M111 105h30c18 0 27 8 27 22 0 15-10 23-27 23h-30v-45Z" fill="#f5f9fc"/>
+            <path d="M156 82c23 8 40 26 47 49" fill="none" stroke="url(#v2-signal)" stroke-width="13" stroke-linecap="round"/>
+            <circle cx="206" cy="142" r="9" fill="#31b99d"/>
+            <rect x="126" y="171" width="45" height="32" rx="10" fill="#4cc6a7"/>
+          </svg>
+        </div>
+        <div class="sizes">
+          <svg width="128" height="128" viewBox="0 0 256 256"><use href="#v2-symbol"></use></svg>
+          <svg width="64" height="64" viewBox="0 0 256 256"><use href="#v2-symbol"></use></svg>
+          <svg width="32" height="32" viewBox="0 0 256 256"><use href="#v2-symbol"></use></svg>
+          <svg width="16" height="16" viewBox="0 0 256 256"><use href="#v2-symbol"></use></svg>
+        </div>
+      </article>
+
+      <article class="card">
+        <span class="tag">V3</span>
+        <h2>R / 胶片仓库</h2>
+        <p class="caption">R 的竖线融合成胶片边孔，照片仓库感更强，但比 V1 稍复杂。</p>
+        <div class="stage">
+          <svg class="icon-xl" viewBox="0 0 256 256" role="img" aria-label="RemoPhoto icon version 3">
+            <defs>
+              <linearGradient id="v3-bg" x1="40" y1="20" x2="216" y2="230" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#23313a"/>
+                <stop offset="1" stop-color="#172128"/>
+              </linearGradient>
+              <linearGradient id="v3-r" x1="70" y1="58" x2="190" y2="208" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#f7f4e8"/>
+                <stop offset="1" stop-color="#f2c862"/>
+              </linearGradient>
+            </defs>
+            <rect width="256" height="256" rx="58" fill="url(#v3-bg)"/>
+            <path d="M70 62h78c40 0 64 22 64 55 0 28-17 48-44 55l45 43h-52l-56-57h39c18 0 28-10 28-26s-12-26-31-26h-30v109H70V62Z" fill="url(#v3-r)"/>
+            <path d="M111 106h31c19 0 29 8 29 23 0 14-10 23-29 23h-31v-46Z" fill="#1b2831"/>
+            <rect x="80" y="82" width="15" height="15" rx="4" fill="#1b2831" opacity="0.9"/>
+            <rect x="80" y="115" width="15" height="15" rx="4" fill="#1b2831" opacity="0.9"/>
+            <rect x="80" y="148" width="15" height="15" rx="4" fill="#1b2831" opacity="0.9"/>
+            <rect x="80" y="181" width="15" height="15" rx="4" fill="#1b2831" opacity="0.9"/>
+            <path d="M135 178h51c7 0 13 6 13 13v19h-64v-32Z" fill="#4cc6a7"/>
+          </svg>
+        </div>
+        <div class="sizes">
+          <svg width="128" height="128" viewBox="0 0 256 256"><use href="#v3-symbol"></use></svg>
+          <svg width="64" height="64" viewBox="0 0 256 256"><use href="#v3-symbol"></use></svg>
+          <svg width="32" height="32" viewBox="0 0 256 256"><use href="#v3-symbol"></use></svg>
+          <svg width="16" height="16" viewBox="0 0 256 256"><use href="#v3-symbol"></use></svg>
+        </div>
+      </article>
+    </section>
+
+    <section class="usage">
+      <p>文件内所有图形都是 SVG，可直接复制到 Android VectorDrawable 或作为 adaptive icon 的 foreground 继续拆分。当前更推荐 <code>V1</code>：功能识别最直接，形状也比普通字母 Logo 更有产品记忆点。</p>
+    </section>
+  </main>
+
+  <svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
+    <symbol id="v1-symbol" viewBox="0 0 256 256">
+      <defs>
+        <linearGradient id="v1s-bg" x1="42" y1="24" x2="216" y2="226" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#1c2832"/>
+          <stop offset="1" stop-color="#2b3b46"/>
+        </linearGradient>
+        <linearGradient id="v1s-r" x1="75" y1="54" x2="184" y2="204" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#ffffff"/>
+          <stop offset="0.38" stop-color="#f3f8fc"/>
+          <stop offset="0.7" stop-color="#d5e2ec"/>
+          <stop offset="1" stop-color="#a7b9c7"/>
+        </linearGradient>
+        <linearGradient id="v1s-r-gloss" x1="72" y1="56" x2="178" y2="182" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#ffffff" stop-opacity="0.72"/>
+          <stop offset="0.34" stop-color="#ffffff" stop-opacity="0.26"/>
+          <stop offset="0.68" stop-color="#ffffff" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="v1s-r-shade" x1="82" y1="72" x2="214" y2="218" gradientUnits="userSpaceOnUse">
+          <stop offset="0.38" stop-color="#6f8392" stop-opacity="0"/>
+          <stop offset="0.76" stop-color="#687f8e" stop-opacity="0.28"/>
+          <stop offset="1" stop-color="#455d6d" stop-opacity="0.52"/>
+        </linearGradient>
+        <linearGradient id="v1s-hole" x1="120" y1="106" x2="166" y2="151" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#324a58"/>
+          <stop offset="1" stop-color="#1d2e39"/>
+        </linearGradient>
+        <linearGradient id="v1s-card" x1="141" y1="145" x2="209" y2="210" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#58d2b0"/>
+          <stop offset="1" stop-color="#2aa88d"/>
+        </linearGradient>
+        <filter id="v1s-r-shadow" x="42" y="42" width="196" height="194" filterUnits="userSpaceOnUse">
+          <feDropShadow dx="3" dy="8" stdDeviation="4.5" flood-color="#081018" flood-opacity="0.34"/>
+        </filter>
+      </defs>
+      <rect width="256" height="256" rx="58" fill="url(#v1s-bg)"/>
+      <g transform="translate(-10 0)" filter="url(#v1s-r-shadow)">
+        <path d="M74 64h75c39 0 63 22 63 55 0 26-15 45-39 52l43 41h-52l-55-55h35c17 0 28-10 28-25 0-16-12-26-31-26h-27v106H74V64Z" fill="url(#v1s-r)"/>
+        <path d="M74 64h75c39 0 63 22 63 55 0 26-15 45-39 52l43 41h-52l-55-55h35c17 0 28-10 28-25 0-16-12-26-31-26h-27v106H74V64Z" fill="url(#v1s-r-shade)" opacity="0.78"/>
+        <path d="M74 64h75c39 0 63 22 63 55 0 26-15 45-39 52l43 41h-52l-55-55h35c17 0 28-10 28-25 0-16-12-26-31-26h-27v106H74V64Z" fill="url(#v1s-r-gloss)" opacity="0.9"/>
+        <path d="M91 80h56c27 0 45 13 50 35-10-11-26-16-48-16H99v101H91V80Z" fill="#ffffff" opacity="0.18"/>
+        <path d="M114 106h31c19 0 27 8 27 22 0 14-10 22-27 22h-31v-44Z" fill="url(#v1s-hole)"/>
+        <path d="M122 116h24c10 0 16 4 18 12-3-4-9-6-18-6h-24v-6Z" fill="#ffffff" opacity="0.16"/>
+      </g>
+      <path d="M163 169h38c8 0 14 6 14 14v24c0 8-6 14-14 14h-38c-8 0-14-6-14-14v-24c0-8 6-14 14-14Z" fill="url(#v1s-card)"/>
+      <path d="M159 205l13-13 9 10 7-7 15 16h-39c-4 0-7-3-7-7v-1l2 2Z" fill="#eafcf6" opacity="0.95"/>
+      <circle cx="198" cy="184" r="5" fill="#f6fbff"/>
+    </symbol>
+
+    <symbol id="v2-symbol" viewBox="0 0 256 256">
+      <defs>
+        <linearGradient id="v2s-bg" x1="36" y1="24" x2="220" y2="226" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#f7fbff"/>
+          <stop offset="1" stop-color="#dce8ef"/>
+        </linearGradient>
+        <linearGradient id="v2s-r" x1="68" y1="54" x2="185" y2="203" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#263642"/>
+          <stop offset="1" stop-color="#111b24"/>
+        </linearGradient>
+        <linearGradient id="v2s-signal" x1="149" y1="68" x2="213" y2="144" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#4f8ff7"/>
+          <stop offset="1" stop-color="#31b99d"/>
+        </linearGradient>
+      </defs>
+      <rect width="256" height="256" rx="58" fill="url(#v2s-bg)"/>
+      <path d="M72 65h74c39 0 62 22 62 55 0 27-16 47-42 54l41 39h-50l-56-57h39c17 0 28-10 28-25 0-16-12-26-31-26h-26v108H72V65Z" fill="url(#v2s-r)"/>
+      <path d="M111 105h30c18 0 27 8 27 22 0 15-10 23-27 23h-30v-45Z" fill="#f5f9fc"/>
+      <path d="M156 82c23 8 40 26 47 49" fill="none" stroke="url(#v2s-signal)" stroke-width="13" stroke-linecap="round"/>
+      <circle cx="206" cy="142" r="9" fill="#31b99d"/>
+      <rect x="126" y="171" width="45" height="32" rx="10" fill="#4cc6a7"/>
+    </symbol>
+
+    <symbol id="v3-symbol" viewBox="0 0 256 256">
+      <defs>
+        <linearGradient id="v3s-bg" x1="40" y1="20" x2="216" y2="230" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#23313a"/>
+          <stop offset="1" stop-color="#172128"/>
+        </linearGradient>
+        <linearGradient id="v3s-r" x1="70" y1="58" x2="190" y2="208" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#f7f4e8"/>
+          <stop offset="1" stop-color="#f2c862"/>
+        </linearGradient>
+      </defs>
+      <rect width="256" height="256" rx="58" fill="url(#v3s-bg)"/>
+      <path d="M70 62h78c40 0 64 22 64 55 0 28-17 48-44 55l45 43h-52l-56-57h39c18 0 28-10 28-26s-12-26-31-26h-30v109H70V62Z" fill="url(#v3s-r)"/>
+      <path d="M111 106h31c19 0 29 8 29 23 0 14-10 23-29 23h-31v-46Z" fill="#1b2831"/>
+      <rect x="80" y="82" width="15" height="15" rx="4" fill="#1b2831" opacity="0.9"/>
+      <rect x="80" y="115" width="15" height="15" rx="4" fill="#1b2831" opacity="0.9"/>
+      <rect x="80" y="148" width="15" height="15" rx="4" fill="#1b2831" opacity="0.9"/>
+      <rect x="80" y="181" width="15" height="15" rx="4" fill="#1b2831" opacity="0.9"/>
+      <path d="M135 178h51c7 0 13 6 13 13v19h-64v-32Z" fill="#4cc6a7"/>
+    </symbol>
+  </svg>
+</body>
+</html>

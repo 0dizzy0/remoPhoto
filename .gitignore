@@ -2,6 +2,7 @@
 .gradle/
 build/
 !gradle/wrapper/gradle-wrapper.jar
+.kotlin/
 
 # Android
 /local.properties
@@ -16,6 +17,7 @@ captures/
 # Generated
 */build/
 app/build/
+out/
 
 # APK
 *.apk
@@ -31,16 +33,28 @@ proguard/
 # Signing
 *.keystore
 *.jks
+*.p12
+*.pem
+*.key
 
-# Claude Code
+# AI / local agent workspaces
 .claude/
+.agents/
+.codex/
+.cache/
+skills-lock.json
 
 # Build error logs
 buid_error.txt
 
 # Debug
 *.hprof
+*.trace
+*.prof
 
 # Misc
 *.log
 *.tmp
+*.bak
+*.orig
+Thumbs.db

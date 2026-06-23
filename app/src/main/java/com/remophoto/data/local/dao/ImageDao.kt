@@ -9,6 +9,11 @@ data class AlbumCoverMetadata(
     val coverImageId: Long?
 )
 
+data class AlbumCoverPath(
+    val albumId: Long,
+    val coverPath: String?
+)
+
 /**
  * 图片索引 DAO
  */
@@ -30,6 +35,60 @@ interface ImageDao {
     /** 根据 ID 查询单张图片 */
     @Query("SELECT * FROM images WHERE id = :imageId LIMIT 1")
     suspend fun getImageById(imageId: Long): ImageEntity?
+
+    /** 批量查询每个相册按文件名升序的首图路径，用于动态封面。 */
+    @Query(
+        "SELECT i.album_id AS albumId, i.file_path AS coverPath FROM images i " +
+            "WHERE i.album_id IN (:albumIds) AND i.id = (" +
+            "SELECT x.id FROM images x WHERE x.album_id = i.album_id " +
+            "ORDER BY x.file_name COLLATE NOCASE ASC, x.id ASC LIMIT 1)"
+    )
+    suspend fun getFirstImagePathsNameAsc(albumIds: List<Long>): List<AlbumCoverPath>
+
+    /** 批量查询每个相册按文件名降序的首图路径，用于动态封面。 */
+    @Query(
+        "SELECT i.album_id AS albumId, i.file_path AS coverPath FROM images i " +
+            "WHERE i.album_id IN (:albumIds) AND i.id = (" +
+            "SELECT x.id FROM images x WHERE x.album_id = i.album_id " +
+            "ORDER BY x.file_name COLLATE NOCASE DESC, x.id ASC LIMIT 1)"
+    )
+    suspend fun getFirstImagePathsNameDesc(albumIds: List<Long>): List<AlbumCoverPath>
+
+    /** 批量查询每个相册按修改时间升序的首图路径，用于动态封面。 */
+    @Query(
+        "SELECT i.album_id AS albumId, i.file_path AS coverPath FROM images i " +
+            "WHERE i.album_id IN (:albumIds) AND i.id = (" +
+            "SELECT x.id FROM images x WHERE x.album_id = i.album_id " +
+            "ORDER BY x.last_modified ASC, x.id ASC LIMIT 1)"
+    )
+    suspend fun getFirstImagePathsModifiedAsc(albumIds: List<Long>): List<AlbumCoverPath>
+
+    /** 批量查询每个相册按修改时间降序的首图路径，用于动态封面。 */
+    @Query(
+        "SELECT i.album_id AS albumId, i.file_path AS coverPath FROM images i " +
+            "WHERE i.album_id IN (:albumIds) AND i.id = (" +
+            "SELECT x.id FROM images x WHERE x.album_id = i.album_id " +
+            "ORDER BY x.last_modified DESC, x.id ASC LIMIT 1)"
+    )
+    suspend fun getFirstImagePathsModifiedDesc(albumIds: List<Long>): List<AlbumCoverPath>
+
+    /** 批量查询每个相册按文件大小升序的首图路径，用于动态封面。 */
+    @Query(
+        "SELECT i.album_id AS albumId, i.file_path AS coverPath FROM images i " +
+            "WHERE i.album_id IN (:albumIds) AND i.id = (" +
+            "SELECT x.id FROM images x WHERE x.album_id = i.album_id " +
+            "ORDER BY x.file_size ASC, x.id ASC LIMIT 1)"
+    )
+    suspend fun getFirstImagePathsSizeAsc(albumIds: List<Long>): List<AlbumCoverPath>
+
+    /** 批量查询每个相册按文件大小降序的首图路径，用于动态封面。 */
+    @Query(
+        "SELECT i.album_id AS albumId, i.file_path AS coverPath FROM images i " +
+            "WHERE i.album_id IN (:albumIds) AND i.id = (" +
+            "SELECT x.id FROM images x WHERE x.album_id = i.album_id " +
+            "ORDER BY x.file_size DESC, x.id ASC LIMIT 1)"
+    )
+    suspend fun getFirstImagePathsSizeDesc(albumIds: List<Long>): List<AlbumCoverPath>
 
     /** 按仓库 ID 查询所有图片 */
     @Query("SELECT * FROM images WHERE repository_id = :repoId")

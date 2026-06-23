@@ -8,6 +8,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
@@ -26,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -236,36 +239,17 @@ fun AlbumListScreen(
                                 contentDescription = if (isGridView) "列表模式" else "网格模式"
                             )
                         }
-                        // 分类管理入口
                         IconButton(
                             onClick = {
-                                AppLogger.i(TAG, "点击分类管理按钮")
-                                onCategoriesClick()
-                            },
-                            modifier = Modifier.semantics { contentDescription = "分类管理" }
+                                AppLogger.i(TAG, "点击设置按钮 (顶部栏入口)")
+                                onSettingsClick()
+                            }
                         ) {
-                            Text("🏷️", modifier = Modifier.padding(4.dp))
-                        }
-                        if (showRepoLevel) {
-                            // 仓库和设置入口只在仓库层显示；相册层可使用底部导航。
-                            IconButton(
-                                onClick = {
-                                    AppLogger.i(TAG, "点击仓库管理按钮")
-                                    onRepositoryManagerClick()
-                                },
-                                modifier = Modifier.semantics { contentDescription = "仓库管理" }
-                            ) {
-                                Text("📁", modifier = Modifier.padding(4.dp))
-                            }
-                            IconButton(
-                                onClick = {
-                                    AppLogger.i(TAG, "点击设置按钮 (顶部栏入口)")
-                                    onSettingsClick()
-                                },
-                                modifier = Modifier.semantics { contentDescription = "设置" }
-                            ) {
-                                Text("⚙️", modifier = Modifier.padding(4.dp))
-                            }
+                            Icon(
+                                imageVector = Icons.Outlined.Tune,
+                                contentDescription = "设置",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 )
@@ -318,7 +302,19 @@ fun AlbumListScreen(
                 }
             }
             else -> {
-                if (showRepoLevel) {
+                AnimatedContent(
+                    targetState = showRepoLevel,
+                    transitionSpec = {
+                        (fadeIn(animationSpec = tween(180)) +
+                            scaleIn(initialScale = 0.96f, animationSpec = tween(220)))
+                            .togetherWith(
+                                fadeOut(animationSpec = tween(120)) +
+                                    scaleOut(targetScale = 1.02f, animationSpec = tween(120))
+                            )
+                    },
+                    label = "repo_album_level_switch"
+                ) { repoLevel ->
+                if (repoLevel) {
                     // ===== 仓库列表视图 =====
                     val localRepos = viewModel.localRepos()
                     val remoteRepos = viewModel.remoteRepos()
@@ -570,6 +566,7 @@ fun AlbumListScreen(
                             }
                         }
                     }
+                }
                 }
             }
         }

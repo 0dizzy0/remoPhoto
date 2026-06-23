@@ -1,6 +1,8 @@
 package com.remophoto.ui.viewer
 
+import android.app.Activity
 import android.content.Intent
+import android.graphics.Color as AndroidColor
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
@@ -26,10 +28,12 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.remophoto.RemoPhotoApp
 import com.remophoto.domain.model.ImageItem
@@ -72,6 +76,7 @@ fun FullScreenViewer(
     onBack: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
     val app = context.applicationContext as RemoPhotoApp
     val settingsRepository = app.dependencyContainer.settingsRepository
     val albumCoverManager = app.dependencyContainer.albumCoverManager
@@ -204,11 +209,29 @@ fun FullScreenViewer(
         }
     }
 
-    // 全屏：不修改 systemUiVisibility，依赖 enableEdgeToEdge() 透明状态栏
-    // FLAG_FULLSCREEN 会导致窗口尺寸变化(+108px=36dp) 引发整体界面跳动
-    DisposableEffect(Unit) {
+    // 全屏：保持窗口尺寸不变，仅让系统栏透明叠加在图片上。
+    // FLAG_FULLSCREEN 会导致窗口尺寸变化(+108px=36dp) 引发整体界面跳动。
+    DisposableEffect(view) {
+        val window = (view.context as? Activity)?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        val oldStatusBarColor = window?.statusBarColor
+        val oldNavigationBarColor = window?.navigationBarColor
+        val oldLightStatusBars = controller?.isAppearanceLightStatusBars
+        val oldLightNavigationBars = controller?.isAppearanceLightNavigationBars
+        if (window != null && controller != null) {
+            window.statusBarColor = AndroidColor.TRANSPARENT
+            window.navigationBarColor = AndroidColor.BLACK
+            controller.isAppearanceLightStatusBars = false
+            controller.isAppearanceLightNavigationBars = false
+        }
         AppLogger.i(TAG, "🟢 FullScreenViewer 进入组合: albumId=$albumId, imageIndex=$imageIndex")
         onDispose {
+            if (window != null && controller != null) {
+                oldStatusBarColor?.let { window.statusBarColor = it }
+                oldNavigationBarColor?.let { window.navigationBarColor = it }
+                oldLightStatusBars?.let { controller.isAppearanceLightStatusBars = it }
+                oldLightNavigationBars?.let { controller.isAppearanceLightNavigationBars = it }
+            }
             AppLogger.i(TAG, "🔴 FullScreenViewer 离开组合: albumId=$albumId")
         }
     }

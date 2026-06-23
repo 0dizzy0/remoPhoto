@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,7 +18,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.remophoto.data.local.entity.CategoryEntity
-import com.remophoto.util.AppLogger
 
 /**
  * 分类管理页面
@@ -30,6 +31,7 @@ import com.remophoto.util.AppLogger
 @Composable
 fun CategoryListScreen(
     onBack: () -> Unit = {},
+    onSettingsClick: () -> Unit = {},
     onCategoryClick: (Long, String) -> Unit = { _, _ -> },
     viewModel: CategoryViewModel = viewModel()
 ) {
@@ -43,12 +45,9 @@ fun CategoryListScreen(
         topBar = {
             TopAppBar(
                 title = { Text("分类管理") },
-                navigationIcon = {
-                    TextButton(onClick = {
-                        AppLogger.i(TAG, "点击返回按钮")
-                        onBack()
-                    }) {
-                        Text("← 返回")
+                actions = {
+                    IconButton(onClick = onSettingsClick) {
+                        Icon(Icons.Outlined.Tune, contentDescription = "设置")
                     }
                 }
             )

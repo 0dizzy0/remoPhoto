@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -40,6 +41,7 @@ import java.util.*
 fun RepositoryManagerScreen(
     viewModel: RepositoryManagerViewModel,
     onBack: () -> Unit,
+    onSettingsClick: () -> Unit = {},
     onScanComplete: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -88,9 +90,9 @@ fun RepositoryManagerScreen(
         topBar = {
             TopAppBar(
                 title = { Text("仓库管理") },
-                navigationIcon = {
-                    TextButton(onClick = onBack) {
-                        Text("← 返回")
+                actions = {
+                    IconButton(onClick = onSettingsClick) {
+                        Icon(Icons.Outlined.Tune, contentDescription = "设置")
                     }
                 }
             )

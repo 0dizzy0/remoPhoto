@@ -39,6 +39,7 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
     private val repositoryDao: RepositoryDao = container.repositoryDao
     private val settingsRepository: SettingsRepository = container.settingsRepository
     private val categoryManager: CategoryManager = container.categoryManager
+    private val imageDao = container.imageDao
     // Phase 4: 远程仓库
     private val remoteConnectionDao = container.remoteConnectionDao
     private val syncRemoteUseCase = container.syncRemoteRepositoryUseCase
@@ -92,6 +93,8 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
     private val _pagedAlbums = MutableStateFlow<List<Album>>(emptyList())
     val pagedAlbums: StateFlow<List<Album>> = _pagedAlbums.asStateFlow()
     private var flatAlbums: List<Album> = emptyList()
+    private val categoryFilterCache = LinkedHashMap<CategoryCacheKey, CategoryCacheEntry>(8, 0.75f, true)
+    private var lastCategoryRemoteCheckAt: Long = 0L
 
     // ===== 仓库层级选择 =====
 
@@ -321,42 +324,58 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
         loadJob = viewModelScope.launch {
             _isLoading.value = true
             try {
+                val startedAt = System.currentTimeMillis()
                 val categoryAlbums = categoryManager.getAlbumIdsForCategory(categoryId).toSet()
-                // 数据库中的 CONNECTED 只是上次状态；进入分类前并发验证，避免离线远程相册误显示。
-                val remoteConnections = remoteConnectionDao.getAllConnectionsList()
-                coroutineScope {
-                    remoteConnections.map { connection ->
-                        async { syncRemoteUseCase.checkConnection(connection) }
-                    }.awaitAll()
-                }
-                AppLogger.i(TAG, "分类加载前远程状态检查完成: 连接数=${remoteConnections.size}")
-                combine(
-                    albumRepository.getAllAlbums(),
-                    repositoryDao.getAllRepositories(),
-                    remoteConnectionDao.getAllConnections()
-                ) { albums, repositories, connections ->
-                    val connectionStatus = connections.associate { it.id to it.status }
-                    val visibleRepositoryIds = repositories
-                        .filter { repo ->
-                            repo.remoteConnectionId == null ||
-                                connectionStatus[repo.remoteConnectionId] == ConnectionStatus.CONNECTED
-                        }
-                        .mapTo(mutableSetOf()) { it.id }
-                    albums.filter { it.repositoryId in visibleRepositoryIds }
-                }.collect { visibleAlbums ->
+                ensureCategoryRemoteStatusFresh()
+
+                val repositories = repositoryDao.getAllRepositoriesList()
+                val connections = remoteConnectionDao.getAllConnectionsList()
+                val connectionStatus = connections.associate { it.id to it.status }
+                val visibleRepositoryIds = repositories
+                    .filter { repo ->
+                        repo.remoteConnectionId == null ||
+                            connectionStatus[repo.remoteConnectionId] == ConnectionStatus.CONNECTED
+                    }
+                    .mapTo(mutableSetOf()) { it.id }
+                val visibleAlbums = albumRepository.getAllAlbumsList()
+                    .filter { it.repositoryId in visibleRepositoryIds }
+                val defaultImageSort = settingsRepository.defaultSortOrder.first()
+                val cacheKey = CategoryCacheKey(
+                    categoryId = categoryId,
+                    sortOrder = _sortOrder.value,
+                    defaultImageSort = defaultImageSort,
+                    categoryFingerprint = categoryAlbums.stableHash(),
+                    visibleRepositoryFingerprint = visibleRepositoryIds.stableHash(),
+                    repositoryVersionFingerprint = repositories.repositoryVersionHash(visibleRepositoryIds),
+                    albumVersionFingerprint = visibleAlbums.albumVersionHash()
+                )
+                categoryFilterCache[cacheKey]?.let { entry ->
                     _allAlbums.value = visibleAlbums
-                    val tree = buildAlbumTree(visibleAlbums)
-                    // 筛选：只保留该分类下的相册及其祖先
-                    val filteredTree = filterTreeByCategory(tree, categoryAlbums)
-                    _albumTree.value = filteredTree
-                    _isEmpty.value = filteredTree.isEmpty()
+                    applyAlbumTree(entry.tree, entry.flat)
                     _isLoading.value = false
-                    recomputePagedAlbums()
-                    AppLogger.i(TAG,
-                        "分类筛选: category=\"$categoryName\"(id=$categoryId), " +
-                        "匹配相册=${categoryAlbums.size}, 可访问相册=${visibleAlbums.size}, 显示树=${filteredTree.size}"
+                    AppLogger.i(
+                        TAG,
+                        "分类筛选命中缓存: category=\"$categoryName\"(id=$categoryId), " +
+                            "匹配相册=${categoryAlbums.size}, 显示=${entry.flat.size}, " +
+                            "cacheAgeMs=${System.currentTimeMillis() - entry.createdAt}, " +
+                            "elapsedMs=${System.currentTimeMillis() - startedAt}"
                     )
+                    return@launch
                 }
+
+                _allAlbums.value = visibleAlbums
+                val tree = buildAlbumTree(visibleAlbums)
+                val filteredTree = filterTreeByCategory(tree, categoryAlbums)
+                val filteredFlat = flattenAlbums(filteredTree)
+                applyAlbumTree(filteredTree, filteredFlat)
+                putCategoryCache(cacheKey, CategoryCacheEntry(filteredTree, filteredFlat))
+                _isLoading.value = false
+                AppLogger.i(
+                    TAG,
+                    "分类筛选完成: category=\"$categoryName\"(id=$categoryId), " +
+                        "匹配相册=${categoryAlbums.size}, 可访问相册=${visibleAlbums.size}, " +
+                        "显示=${filteredFlat.size}, elapsedMs=${System.currentTimeMillis() - startedAt}"
+                )
             } catch (e: CancellationException) {
                 AppLogger.d(TAG, "分类相册加载任务已被新请求替换")
                 throw e
@@ -401,12 +420,13 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
      */
     private suspend fun buildAlbumTree(allAlbums: List<AlbumEntity>): List<Album> = withContext(Dispatchers.Default) {
         val startedAt = System.currentTimeMillis()
+        val dynamicCoverPaths = loadDynamicCoverPaths(allAlbums)
         val ids = allAlbums.mapTo(mutableSetOf()) { it.id }
         val childrenByParent = allAlbums.groupBy { it.parentAlbumId }
 
         fun buildNode(entity: AlbumEntity, depth: Int): Album {
             val children = childrenByParent[entity.id].orEmpty().map { buildNode(it, depth + 1) }
-            return entity.toDomainModel(depth).copy(children = children)
+            return entity.toDomainModel(depth, dynamicCoverPaths[entity.id]).copy(children = children)
         }
 
         val roots = allAlbums
@@ -537,6 +557,18 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
         updatePageSlice()
     }
 
+    private fun applyAlbumTree(tree: List<Album>, flat: List<Album>) {
+        _albumTree.value = tree
+        flatAlbums = flat
+        val computedPages = AlbumListLocator.pageCount(flatAlbums.size, _albumsPerPage.value)
+        _totalPages.value = computedPages
+        if (_currentPage.value > computedPages) {
+            _currentPage.value = computedPages
+        }
+        _isEmpty.value = tree.isEmpty()
+        updatePageSlice()
+    }
+
     private fun updatePageSlice() {
         val perPage = _albumsPerPage.value
         val offset = (_currentPage.value - 1) * perPage
@@ -546,14 +578,14 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
 
     // ===== 工具方法 =====
 
-    private fun AlbumEntity.toDomainModel(depth: Int): Album {
+    private fun AlbumEntity.toDomainModel(depth: Int, dynamicCoverPath: String? = null): Album {
         val model = Album(
             id = id,
             name = name,
             directoryPath = directoryPath,
             repositoryId = repositoryId,
             parentAlbumId = parentAlbumId,
-            coverImagePath = coverImagePath,
+            coverImagePath = dynamicCoverPath ?: coverImagePath,
             sortOrder = sortOrder?.let { SortOrder.fromName(it) },
             imageCount = imageCount,
             lastModified = lastModified,
@@ -630,5 +662,115 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
     companion object {
         private const val TAG = "AlbumList"
         private const val REMOTE_CACHE_TTL_MS = 30 * 60 * 1000L
+        private const val CATEGORY_REMOTE_CHECK_TTL_MS = 30 * 1000L
+        private const val CATEGORY_CACHE_MAX_ENTRIES = 8
+        private const val COVER_QUERY_CHUNK_SIZE = 800
     }
+
+    private suspend fun ensureCategoryRemoteStatusFresh() {
+        val now = System.currentTimeMillis()
+        val ageMs = now - lastCategoryRemoteCheckAt
+        val remoteConnections = remoteConnectionDao.getAllConnectionsList()
+        if (remoteConnections.isEmpty()) return
+        if (ageMs in 0 until CATEGORY_REMOTE_CHECK_TTL_MS) {
+            AppLogger.i(TAG, "分类加载复用远程连接状态: 连接数=${remoteConnections.size}, ageMs=$ageMs")
+            return
+        }
+        val startedAt = System.currentTimeMillis()
+        coroutineScope {
+            remoteConnections.map { connection ->
+                async { syncRemoteUseCase.checkConnection(connection) }
+            }.awaitAll()
+        }
+        lastCategoryRemoteCheckAt = System.currentTimeMillis()
+        AppLogger.i(
+            TAG,
+            "分类加载前远程状态检查完成: 连接数=${remoteConnections.size}, " +
+                "elapsedMs=${System.currentTimeMillis() - startedAt}"
+        )
+    }
+
+    private suspend fun loadDynamicCoverPaths(allAlbums: List<AlbumEntity>): Map<Long, String> {
+        val candidates = allAlbums.filter { it.imageCount > 0 }
+        if (candidates.isEmpty()) return emptyMap()
+        val startedAt = System.currentTimeMillis()
+        val globalSort = settingsRepository.defaultSortOrder.first()
+        val result = mutableMapOf<Long, String>()
+        candidates
+            .groupBy { it.sortOrder?.let(SortOrder::fromName) ?: globalSort }
+            .forEach { (sortOrder, albums) ->
+                albums.map { it.id }.chunked(COVER_QUERY_CHUNK_SIZE).forEach { ids ->
+                    val covers = when (sortOrder) {
+                        SortOrder.NAME_ASC -> imageDao.getFirstImagePathsNameAsc(ids)
+                        SortOrder.NAME_DESC -> imageDao.getFirstImagePathsNameDesc(ids)
+                        SortOrder.DATE_MODIFIED_ASC -> imageDao.getFirstImagePathsModifiedAsc(ids)
+                        SortOrder.DATE_MODIFIED_DESC -> imageDao.getFirstImagePathsModifiedDesc(ids)
+                        SortOrder.SIZE_ASC -> imageDao.getFirstImagePathsSizeAsc(ids)
+                        SortOrder.SIZE_DESC -> imageDao.getFirstImagePathsSizeDesc(ids)
+                    }
+                    covers.forEach { cover ->
+                        cover.coverPath?.let { result[cover.albumId] = it.asThumbnailCoverPath() }
+                    }
+                }
+            }
+        AppLogger.i(
+            TAG,
+            "动态封面批量解析完成: albums=${candidates.size}, resolved=${result.size}, " +
+                "elapsedMs=${System.currentTimeMillis() - startedAt}"
+        )
+        return result
+    }
+
+    private fun String.asThumbnailCoverPath(): String {
+        return if (startsWith("http://") && contains("/api/image/") && !endsWith("/thumb")) {
+            "$this/thumb"
+        } else {
+            this
+        }
+    }
+
+    private fun putCategoryCache(key: CategoryCacheKey, entry: CategoryCacheEntry) {
+        categoryFilterCache[key] = entry
+        while (categoryFilterCache.size > CATEGORY_CACHE_MAX_ENTRIES) {
+            val eldest = categoryFilterCache.entries.firstOrNull()?.key ?: break
+            categoryFilterCache.remove(eldest)
+        }
+    }
+
+    private fun Set<Long>.stableHash(): Int =
+        sorted().fold(1) { acc, value -> 31 * acc + value.hashCode() }
+
+    private fun List<RepositoryEntity>.repositoryVersionHash(visibleRepositoryIds: Set<Long>): Int =
+        filter { it.id in visibleRepositoryIds }
+            .sortedBy { it.id }
+            .fold(1) { acc, repo ->
+                var hash = 31 * acc + repo.id.hashCode()
+                hash = 31 * hash + repo.lastScanTime.hashCode()
+                31 * hash + repo.imageCount
+            }
+
+    private fun List<AlbumEntity>.albumVersionHash(): Int =
+        sortedBy { it.id }
+            .fold(1) { acc, album ->
+                var hash = 31 * acc + album.id.hashCode()
+                hash = 31 * hash + album.imageCount
+                hash = 31 * hash + album.lastModified.hashCode()
+                31 * hash + (album.sortOrder?.hashCode() ?: 0)
+            }
+
+    private data class CategoryCacheKey(
+        val categoryId: Long,
+        val sortOrder: AlbumSortOrder,
+        val defaultImageSort: SortOrder,
+        val categoryFingerprint: Int,
+        val visibleRepositoryFingerprint: Int,
+        val repositoryVersionFingerprint: Int,
+        val albumVersionFingerprint: Int
+    )
+
+    private data class CategoryCacheEntry(
+        val tree: List<Album>,
+        val flat: List<Album>,
+        val createdAt: Long = System.currentTimeMillis()
+    )
 }
