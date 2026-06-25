@@ -74,7 +74,9 @@ fun AlbumListScreen(
     onCategoriesClick: () -> Unit = {},
     onAlbumSettingsClick: (Long) -> Unit = {},
     categoryId: Long? = null,
-    categoryName: String? = null
+    categoryName: String? = null,
+    repoId: Long? = null,
+    repoName: String? = null
 ) {
     val albumTree by viewModel.albumTree.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -96,6 +98,7 @@ fun AlbumListScreen(
 
     // 分类选择器弹窗
     var showCategoryPicker by remember { mutableStateOf(false) }
+    var showRemoveFromCategoryConfirm by remember { mutableStateOf(false) }
 
     // Phase 4: 添加远程仓库对话框
     var showAddRemoteDialog by remember { mutableStateOf(false) }
@@ -105,12 +108,21 @@ fun AlbumListScreen(
     val scope = rememberCoroutineScope()
 
     // 外部传入的分类筛选参数
-    LaunchedEffect(categoryId) {
-        if (categoryId != null && categoryName != null) {
-            viewModel.loadAlbumsByCategory(categoryId, categoryName)
-        } else {
-            // 无筛选参数时清除旧筛选状态（防止切换页面后残留）
-            viewModel.clearCategoryFilter()
+    LaunchedEffect(categoryId, categoryName, repoId, repoName) {
+        when {
+            categoryId != null && categoryName != null -> {
+                AppLogger.i(TAG, "Apply album_list route: categoryId=$categoryId, categoryName=$categoryName")
+                viewModel.loadAlbumsByCategory(categoryId, categoryName)
+            }
+            repoId != null && repoName != null -> {
+                AppLogger.i(TAG, "Apply album_list route: repoId=$repoId, repoName=$repoName")
+                viewModel.selectRepo(repoId, repoName)
+            }
+            else -> {
+                AppLogger.i(TAG, "Apply album_list route: repository root")
+                // 无筛选参数时清除旧筛选状态（防止切换页面后残留）
+                viewModel.showRepositoryList()
+            }
         }
     }
 
@@ -156,12 +168,24 @@ fun AlbumListScreen(
                     },
                     actions = {
                         if (selectedAlbumIds.isNotEmpty()) {
-                            TextButton(onClick = {
-                                AppLogger.i(TAG, "点击添加到分类: 已选=${selectedAlbumIds.size}项")
-                                viewModel.loadAllCategories()
-                                showCategoryPicker = true
-                            }) {
-                                Text("添加到分类")
+                            if (activeFilterCategoryName != null) {
+                                TextButton(onClick = {
+                                    AppLogger.i(
+                                        TAG,
+                                        "点击从分类删除: category=$activeFilterCategoryName, 已选=${selectedAlbumIds.size}项"
+                                    )
+                                    showRemoveFromCategoryConfirm = true
+                                }) {
+                                    Text("删除", color = MaterialTheme.colorScheme.error)
+                                }
+                            } else {
+                                TextButton(onClick = {
+                                    AppLogger.i(TAG, "点击添加到分类: 已选=${selectedAlbumIds.size}项")
+                                    viewModel.loadAllCategories()
+                                    showCategoryPicker = true
+                                }) {
+                                    Text("添加到分类")
+                                }
                             }
                         }
                     }
@@ -316,8 +340,8 @@ fun AlbumListScreen(
                 ) { repoLevel ->
                 if (repoLevel) {
                     // ===== 仓库列表视图 =====
-                    val localRepos = viewModel.localRepos()
-                    val remoteRepos = viewModel.remoteRepos()
+                    val localRepos = repoList.filter { it.remoteConnectionId == null }
+                    val remoteRepos = repoList.filter { it.remoteConnectionId != null }
 
                     // 统一的 LazyColumn（始终显示，确保远程仓库添加入口可见）
                     LazyColumn(
@@ -474,7 +498,12 @@ fun AlbumListScreen(
                                 )
                         },
                         label = "album_content"
-                    ) { _ ->
+                    ) { animatedContentKey ->
+                        val animatedDisplayAlbums = if (animatedContentKey != 0L) {
+                            findAlbumById(albumTree, animatedContentKey)?.children ?: emptyList()
+                        } else {
+                            pagedAlbums
+                        }
                         if (isGridView) {
                             LazyVerticalGrid(
                                 columns = GridCells.Fixed(2),
@@ -486,7 +515,7 @@ fun AlbumListScreen(
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 items(
-                                    displayAlbums,
+                                    animatedDisplayAlbums,
                                     key = { it.id },
                                     contentType = { _ -> "album_grid_card" }
                                 ) { album ->
@@ -523,7 +552,7 @@ fun AlbumListScreen(
                                     verticalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     items(
-                                        displayAlbums,
+                                        animatedDisplayAlbums,
                                         key = { it.id },
                                         contentType = { _ -> "album_list_card" }
                                     ) { album ->
@@ -551,7 +580,7 @@ fun AlbumListScreen(
                                 }
 
                                 // 快速滚动指示器（仅当相册数 > 20 时显示）
-                                if (displayAlbums.size > 20) {
+                                if (animatedDisplayAlbums.size > 20) {
                                     Box(
                                         modifier = Modifier
                                             .align(Alignment.CenterEnd)
@@ -559,7 +588,7 @@ fun AlbumListScreen(
                                     ) {
                                         ScrollPositionIndicator(
                                             listState = listState,
-                                            itemCount = displayAlbums.size
+                                            itemCount = animatedDisplayAlbums.size
                                         )
                                     }
                                 }
@@ -661,6 +690,34 @@ fun AlbumListScreen(
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { showCategoryPicker = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    if (showRemoveFromCategoryConfirm) {
+        AlertDialog(
+            onDismissRequest = { showRemoveFromCategoryConfirm = false },
+            title = { Text("删除相册分类") },
+            text = {
+                Text(
+                    "确定要从「${activeFilterCategoryName ?: "当前分类"}」中删除选中的 ${selectedAlbumIds.size} 个相册吗？\n\n" +
+                        "此操作只会移除分类关联，不会删除相册或图片文件。"
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.removeSelectedFromActiveCategory()
+                        showRemoveFromCategoryConfirm = false
+                    }
+                ) {
+                    Text("删除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRemoveFromCategoryConfirm = false }) {
                     Text("取消")
                 }
             }

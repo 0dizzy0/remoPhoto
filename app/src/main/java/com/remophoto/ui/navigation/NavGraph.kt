@@ -1,5 +1,10 @@
 package com.remophoto.ui.navigation
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
@@ -18,12 +23,12 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Source
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -41,6 +46,7 @@ import com.remophoto.ui.viewer.FullScreenViewer
 import com.remophoto.ui.settings.SettingsScreen
 import com.remophoto.ui.settings.SettingsViewModel
 import com.remophoto.ui.categories.CategoryListScreen
+import com.remophoto.ui.categories.CategoryViewModel
 import com.remophoto.ui.albumlist.AlbumSettingsScreen
 import com.remophoto.data.repository.RepositoryManager
 import com.remophoto.ui.repository.RepositoryManagerScreen
@@ -56,20 +62,34 @@ import com.remophoto.util.PermissionHelper
 sealed class Screen(val route: String) {
 
     /** 相册列表页（主页），可选分类筛选参数 */
-    data object AlbumList : Screen("album_list?categoryId={categoryId}&categoryName={categoryName}") {
-        const val ROUTE = "album_list?categoryId={categoryId}&categoryName={categoryName}"
+    data object AlbumList : Screen("album_list?categoryId={categoryId}&categoryName={categoryName}&repoId={repoId}&repoName={repoName}") {
+        const val ROUTE = "album_list?categoryId={categoryId}&categoryName={categoryName}&repoId={repoId}&repoName={repoName}"
         const val BASE_ROUTE = "album_list"
-        fun createRoute(categoryId: Long? = null, categoryName: String? = null): String {
-            return if (categoryId != null && categoryName != null)
-                "album_list?categoryId=$categoryId&categoryName=$categoryName"
-            else "album_list"
+        fun createRoute(
+            categoryId: Long? = null,
+            categoryName: String? = null,
+            repoId: Long? = null,
+            repoName: String? = null
+        ): String {
+            val params = buildList {
+                if (categoryId != null && categoryName != null) {
+                    add("categoryId=$categoryId")
+                    add("categoryName=${Uri.encode(categoryName)}")
+                }
+                if (repoId != null && repoName != null) {
+                    add("repoId=$repoId")
+                    add("repoName=${Uri.encode(repoName)}")
+                }
+            }
+            return if (params.isEmpty()) BASE_ROUTE else "$BASE_ROUTE?${params.joinToString("&")}"
         }
     }
 
     /** 图片网格页 */
-    data object Gallery : Screen("gallery/{albumId}") {
-        const val ROUTE = "gallery/{albumId}"
-        fun createRoute(albumId: Long) = "gallery/$albumId"
+    data object Gallery : Screen("gallery/{albumId}?returnRoute={returnRoute}") {
+        const val ROUTE = "gallery/{albumId}?returnRoute={returnRoute}"
+        fun createRoute(albumId: Long, returnRoute: String) =
+            "gallery/$albumId?returnRoute=${Uri.encode(returnRoute)}"
     }
 
     /** 全屏浏览页 */
@@ -133,10 +153,53 @@ fun NavGraph(
     // 共享 ViewModel 实例（跨页面不需要共享的用独立实例）
     val albumListViewModel: AlbumListViewModel = viewModel()
     val selectedRepoId by albumListViewModel.selectedRepoId.collectAsState()
+    val selectedRepoName by albumListViewModel.selectedRepoName.collectAsState()
     val activeFilterCategoryName by albumListViewModel.filterCategoryName.collectAsState()
     val isAlbumLevel = selectedRepoId != null || activeFilterCategoryName != null
     // 提前初始化设置状态，避免首次点击设置 Tab 时集中读取 DataStore/缓存统计。
     val settingsViewModel: SettingsViewModel = viewModel()
+    val repoViewModel: RepositoryManagerViewModel = viewModel()
+    val categoryViewModel: CategoryViewModel = viewModel()
+    val context = LocalContext.current
+
+    LaunchedEffect(repositoryManager) {
+        if (repositoryManager != null) {
+            repoViewModel.initialize(repositoryManager)
+        }
+    }
+
+    fun navigateTopLevel(route: String, resetAlbumListState: Boolean = true) {
+        if (resetAlbumListState) {
+            albumListViewModel.showRepositoryList()
+        }
+        val alreadyTarget = if (route == Screen.AlbumList.BASE_ROUTE) {
+            currentRoute?.startsWith(Screen.AlbumList.BASE_ROUTE) == true && !isAlbumLevel
+        } else {
+            currentRoute == route
+        }
+        if (!alreadyTarget) {
+            AppLogger.i(TAG, "Top-level switch: clear nested back stack, target=$route, from=$currentRoute")
+            navController.navigate(route) {
+                popUpTo(navController.graph.id) {
+                    inclusive = false
+                    saveState = false
+                }
+                launchSingleTop = true
+                restoreState = false
+            }
+        }
+    }
+
+    val isTopLevelRoot = when {
+        currentRoute?.startsWith(Screen.AlbumList.BASE_ROUTE) == true -> !isAlbumLevel
+        currentRoute == Screen.RepositoryManager.ROUTE -> true
+        currentRoute == Screen.Categories.ROUTE -> true
+        else -> false
+    }
+    BackHandler(enabled = isTopLevelRoot) {
+        AppLogger.i(TAG, "系统返回: 顶层页面退到后台 (route=$currentRoute)")
+        context.findActivity()?.moveTaskToBack(true)
+    }
 
     Scaffold(
         contentWindowInsets = if (isViewerRoute) {
@@ -147,74 +210,33 @@ fun NavGraph(
         bottomBar = {
             if (showBottomBar) {
                 NavigationBar {
-                    if (isAlbumLevel) {
-                        NavigationBarItem(
-                            icon = { Icon(Icons.Outlined.PhotoLibrary, contentDescription = "相册列表") },
-                            label = { Text("相册列表") },
-                            selected = currentRoute?.startsWith(Screen.AlbumList.BASE_ROUTE) == true,
-                            onClick = {
-                                if (currentRoute?.startsWith(Screen.AlbumList.BASE_ROUTE) != true) {
-                                    AppLogger.i(TAG, "📱 底部Tab点击: 相册列表 (from=$currentRoute)")
-                                    navController.navigate(Screen.AlbumList.BASE_ROUTE) {
-                                        launchSingleTop = true
-                                    }
-                                }
-                            }
-                        )
-                        NavigationBarItem(
-                            icon = { Icon(Icons.Outlined.Category, contentDescription = "分类管理") },
-                            label = { Text("分类管理") },
-                            selected = currentRoute == Screen.Categories.ROUTE,
-                            onClick = {
-                                if (currentRoute != Screen.Categories.ROUTE) {
-                                    AppLogger.i(TAG, "📱 底部Tab点击: 分类管理(相册层) (from=$currentRoute)")
-                                    navController.navigate(Screen.Categories.ROUTE) {
-                                        launchSingleTop = true
-                                    }
-                                }
-                            }
-                        )
-                    } else {
-                        NavigationBarItem(
-                            icon = { Icon(Icons.Outlined.Folder, contentDescription = "仓库列表") },
-                            label = { Text("仓库列表") },
-                            selected = currentRoute?.startsWith(Screen.AlbumList.BASE_ROUTE) == true,
-                            onClick = {
-                                if (currentRoute?.startsWith(Screen.AlbumList.BASE_ROUTE) != true) {
-                                    AppLogger.i(TAG, "📱 底部Tab点击: 仓库列表 (from=$currentRoute)")
-                                    navController.navigate(Screen.AlbumList.BASE_ROUTE) {
-                                        launchSingleTop = true
-                                    }
-                                }
-                            }
-                        )
-                        NavigationBarItem(
-                            icon = { Icon(Icons.Outlined.Source, contentDescription = "仓库管理") },
-                            label = { Text("仓库管理") },
-                            selected = currentRoute == Screen.RepositoryManager.ROUTE,
-                            onClick = {
-                                if (currentRoute != Screen.RepositoryManager.ROUTE) {
-                                    AppLogger.i(TAG, "📱 底部Tab点击: 仓库管理 (from=$currentRoute)")
-                                    navController.navigate(Screen.RepositoryManager.ROUTE) {
-                                        launchSingleTop = true
-                                    }
-                                }
-                            }
-                        )
-                        NavigationBarItem(
-                            icon = { Icon(Icons.Outlined.Category, contentDescription = "分类管理") },
-                            label = { Text("分类管理") },
-                            selected = currentRoute == Screen.Categories.ROUTE,
-                            onClick = {
-                                if (currentRoute != Screen.Categories.ROUTE) {
-                                    AppLogger.i(TAG, "📱 底部Tab点击: 分类管理(仓库层) (from=$currentRoute)")
-                                    navController.navigate(Screen.Categories.ROUTE) {
-                                        launchSingleTop = true
-                                    }
-                                }
-                            }
-                        )
-                    }
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Outlined.Folder, contentDescription = "仓库列表") },
+                        label = { Text("仓库列表") },
+                        selected = currentRoute?.startsWith(Screen.AlbumList.BASE_ROUTE) == true && !isAlbumLevel,
+                        onClick = {
+                            AppLogger.i(TAG, "📱 底部Tab点击: 仓库列表 (from=$currentRoute)")
+                            navigateTopLevel(Screen.AlbumList.BASE_ROUTE)
+                        }
+                    )
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Outlined.Source, contentDescription = "仓库管理") },
+                        label = { Text("仓库管理") },
+                        selected = currentRoute == Screen.RepositoryManager.ROUTE,
+                        onClick = {
+                            AppLogger.i(TAG, "📱 底部Tab点击: 仓库管理 (from=$currentRoute)")
+                            navigateTopLevel(Screen.RepositoryManager.ROUTE)
+                        }
+                    )
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Outlined.Category, contentDescription = "分类管理") },
+                        label = { Text("分类管理") },
+                        selected = currentRoute == Screen.Categories.ROUTE,
+                        onClick = {
+                            AppLogger.i(TAG, "📱 底部Tab点击: 分类管理 (from=$currentRoute)")
+                            navigateTopLevel(Screen.Categories.ROUTE)
+                        }
+                    )
                 }
             }
         }
@@ -249,16 +271,35 @@ fun NavGraph(
                         type = NavType.StringType
                         nullable = true
                         defaultValue = null
+                    },
+                    navArgument("repoId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("repoName") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
                     }
                 )
             ) { backStackEntry ->
                 val categoryId = backStackEntry.arguments?.getString("categoryId")?.toLongOrNull()
-                val categoryName = backStackEntry.arguments?.getString("categoryName")
+                val categoryName = backStackEntry.arguments?.getString("categoryName")?.let(Uri::decode)
+                val repoId = backStackEntry.arguments?.getString("repoId")?.toLongOrNull()
+                val repoName = backStackEntry.arguments?.getString("repoName")?.let(Uri::decode)
                 AlbumListScreen(
                     viewModel = albumListViewModel,
                     onAlbumClick = { albumId ->
+                        val returnRoute = albumListReturnRoute(
+                            categoryId = categoryId,
+                            categoryName = categoryName,
+                            repoId = repoId ?: selectedRepoId,
+                            repoName = repoName ?: selectedRepoName
+                        )
+                        AppLogger.i(TAG, "Navigate: album_list -> gallery (albumId=$albumId, returnRoute=$returnRoute)")
                         AppLogger.i(TAG, "🧭 导航: 相册列表 → 图片网格 (albumId=$albumId)")
-                        navController.navigate(Screen.Gallery.createRoute(albumId))
+                        navController.navigate(Screen.Gallery.createRoute(albumId, returnRoute))
                     },
                     onSettingsClick = {
                         AppLogger.i(TAG, "🧭 导航: 相册列表 → 设置 (顶部栏入口)")
@@ -277,7 +318,9 @@ fun NavGraph(
                         navController.navigate(Screen.AlbumSettings.createRoute(albumId))
                     },
                     categoryId = categoryId,
-                    categoryName = categoryName
+                    categoryName = categoryName,
+                    repoId = repoId,
+                    repoName = repoName
                 )
             }
 
@@ -285,10 +328,18 @@ fun NavGraph(
             composable(
                 route = Screen.Gallery.ROUTE,
                 arguments = listOf(
-                    navArgument("albumId") { type = NavType.LongType }
+                    navArgument("albumId") { type = NavType.LongType },
+                    navArgument("returnRoute") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
                 )
             ) { backStackEntry ->
                 val albumId = backStackEntry.arguments?.getLong("albumId") ?: 0L
+                val returnRoute = backStackEntry.arguments?.getString("returnRoute")
+                    ?.let(Uri::decode)
+                    ?: Screen.AlbumList.BASE_ROUTE
                 GalleryScreen(
                     albumId = albumId,
                     onImageClick = { index ->
@@ -297,7 +348,8 @@ fun NavGraph(
                     },
                     onBack = {
                         AppLogger.i(TAG, "⬅ 返回: 图片网格 → 相册列表")
-                        navController.popBackStack()
+                        AppLogger.i(TAG, "Return: gallery -> returnRoute=$returnRoute")
+                        navigateToReturnRoute(navController, returnRoute)
                     },
                     onAlbumSettingsClick = { id ->
                         AppLogger.i(TAG, "🧭 导航: 图片网格 → 相册设置 (albumId=$id)")
@@ -339,18 +391,11 @@ fun NavGraph(
 
             // 仓库管理页
             composable(Screen.RepositoryManager.ROUTE) {
-                val repoViewModel: RepositoryManagerViewModel = viewModel()
-                // 初始化 RepositoryManager（需要 Activity 绑定的 PermissionHelper）
-                LaunchedEffect(repositoryManager) {
-                    if (repositoryManager != null && repoViewModel.repositoryManager == null) {
-                        repoViewModel.initialize(repositoryManager)
-                    }
-                }
                 RepositoryManagerScreen(
                     viewModel = repoViewModel,
                     onBack = {
-                        AppLogger.i(TAG, "⬅ 返回: 仓库管理 → 相册列表")
-                        navController.popBackStack()
+                        AppLogger.i(TAG, "系统返回: 仓库管理顶层退到后台")
+                        context.findActivity()?.moveTaskToBack(true)
                     },
                     onSettingsClick = {
                         AppLogger.i(TAG, "🧭 导航: 仓库管理 → 设置")
@@ -368,8 +413,8 @@ fun NavGraph(
             composable(Screen.Categories.ROUTE) {
                 CategoryListScreen(
                     onBack = {
-                        AppLogger.i(TAG, "⬅ 返回: 分类管理 → 相册列表")
-                        navController.popBackStack()
+                        AppLogger.i(TAG, "系统返回: 分类管理顶层退到后台")
+                        context.findActivity()?.moveTaskToBack(true)
                     },
                     onSettingsClick = {
                         AppLogger.i(TAG, "🧭 导航: 分类管理 → 设置")
@@ -381,9 +426,10 @@ fun NavGraph(
                         navController.navigate(
                             Screen.AlbumList.createRoute(categoryId, categoryName)
                         ) {
-                            popUpTo(Screen.AlbumList.BASE_ROUTE) { inclusive = false }
+                            popUpTo(Screen.AlbumList.ROUTE) { inclusive = false }
                         }
-                    }
+                    },
+                    viewModel = categoryViewModel
                 )
             }
 
@@ -419,7 +465,35 @@ private const val TAG = "NavGraph"
 private const val NAV_ANIMATION_MS = 220
 private const val NAV_FADE_MS = 140
 
+private fun albumListReturnRoute(
+    categoryId: Long?,
+    categoryName: String?,
+    repoId: Long?,
+    repoName: String?
+): String = when {
+    categoryId != null && categoryName != null -> {
+        Screen.AlbumList.createRoute(categoryId = categoryId, categoryName = categoryName)
+    }
+    repoId != null && repoName != null -> {
+        Screen.AlbumList.createRoute(repoId = repoId, repoName = repoName)
+    }
+    else -> Screen.AlbumList.BASE_ROUTE
+}
+
+private fun navigateToReturnRoute(navController: NavHostController, returnRoute: String) {
+    val targetRoute = returnRoute.takeIf { it.startsWith(Screen.AlbumList.BASE_ROUTE) }
+        ?: Screen.AlbumList.BASE_ROUTE
+    AppLogger.i(TAG, "Strict returnRoute resolved: requested=$returnRoute, target=$targetRoute")
+    navController.navigate(targetRoute) {
+        popUpTo(Screen.AlbumList.ROUTE) { inclusive = false }
+        launchSingleTop = true
+    }
+}
+
 private fun routeEnterTransition(fromRoute: String?, toRoute: String?): EnterTransition {
+    if (isTopLevelRoute(fromRoute) && isTopLevelRoute(toRoute)) {
+        return EnterTransition.None
+    }
     if (toRoute == Screen.Settings.ROUTE) {
         return fadeIn(animationSpec = tween(NAV_FADE_MS)) +
             slideInVertically(animationSpec = tween(NAV_ANIMATION_MS)) { -it / 3 } +
@@ -440,6 +514,9 @@ private fun routeEnterTransition(fromRoute: String?, toRoute: String?): EnterTra
 }
 
 private fun routeExitTransition(fromRoute: String?, toRoute: String?): ExitTransition {
+    if (isTopLevelRoute(fromRoute) && isTopLevelRoute(toRoute)) {
+        return ExitTransition.None
+    }
     if (fromRoute == Screen.Settings.ROUTE) {
         return fadeOut(animationSpec = tween(NAV_FADE_MS)) +
             slideOutVertically(animationSpec = tween(NAV_ANIMATION_MS)) { -it / 4 }
@@ -468,6 +545,17 @@ private fun navOrder(route: String?): Int = when (route) {
 private fun isDepthRoute(route: String?): Boolean = route == Screen.Gallery.ROUTE ||
     route == Screen.Viewer.ROUTE ||
     route == Screen.AlbumSettings.ROUTE
+
+private fun isTopLevelRoute(route: String?): Boolean =
+    route?.startsWith(Screen.AlbumList.BASE_ROUTE) == true ||
+        route == Screen.RepositoryManager.ROUTE ||
+        route == Screen.Categories.ROUTE
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
 
 @Composable
 fun PlaceholderScreen(title: String, subtitle: String) {

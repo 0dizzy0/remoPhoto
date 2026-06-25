@@ -47,7 +47,7 @@ class RepositoryManagerViewModel(application: Application) : AndroidViewModel(ap
     private val _repositories = MutableStateFlow<List<RepositoryEntity>>(emptyList())
     val repositories: StateFlow<List<RepositoryEntity>> = _repositories.asStateFlow()
 
-    private val _isLoading = MutableStateFlow(false)
+    private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     private val _errorMessage = MutableStateFlow<String?>(null)
@@ -135,10 +135,13 @@ class RepositoryManagerViewModel(application: Application) : AndroidViewModel(ap
      * 初始化：加载仓库列表
      */
     fun initialize(manager: RepositoryManager) {
+        if (repositoryManager != null) return
         repositoryManager = manager
         viewModelScope.launch {
             manager.getAllRepositories().collect { list ->
                 _repositories.value = list
+                _isLoading.value = false
+                AppLogger.i(TAG, "仓库管理列表加载完成: count=${list.size}")
             }
         }
     }

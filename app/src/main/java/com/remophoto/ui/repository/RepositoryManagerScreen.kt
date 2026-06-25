@@ -2,6 +2,7 @@ package com.remophoto.ui.repository
 
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -68,6 +69,10 @@ fun RepositoryManagerScreen(
 
     // 删除确认对话框
     var deleteConfirmRepoId by remember { mutableStateOf<Long?>(null) }
+
+    BackHandler {
+        onBack()
+    }
 
     // 错误提示
     LaunchedEffect(errorMessage) {

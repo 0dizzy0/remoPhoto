@@ -1,5 +1,6 @@
 package com.remophoto.ui.categories
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -7,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -41,6 +43,10 @@ fun CategoryListScreen(
     var showCreateDialog by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<CategoryEntity?>(null) }
 
+    BackHandler {
+        onBack()
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -56,7 +62,7 @@ fun CategoryListScreen(
             FloatingActionButton(
                 onClick = { showCreateDialog = true }
             ) {
-                Text("+", style = MaterialTheme.typography.titleLarge)
+                Icon(Icons.Default.Add, contentDescription = "新建分类")
             }
         }
     ) { padding ->

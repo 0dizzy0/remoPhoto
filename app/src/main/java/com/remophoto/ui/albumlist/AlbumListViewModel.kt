@@ -150,6 +150,10 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             repositoryDao.getAllRepositories().collect { repos ->
                 _repoList.value = repos
+                if (_selectedRepoId.value == null && _filterCategoryId.value == null) {
+                    _isEmpty.value = repos.isEmpty()
+                }
+                AppLogger.i(TAG, "仓库列表数据更新: repos=${repos.size}")
             }
         }
         // Phase 4: 加载远程连接状态
@@ -183,6 +187,7 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
                 val repoId = _selectedRepoId.value
                 if (repoId != null) {
                     // 必须读取仓库内全部相册，分页和父子树才能使用同一数据集。
+                    val startedAt = System.currentTimeMillis()
                     val allAlbums = albumRepository.getAlbumsByRepositoryList(repoId)
                     _allAlbums.value = allAlbums
                     val tree = buildAlbumTree(allAlbums)
@@ -190,16 +195,14 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
                     _isEmpty.value = tree.isEmpty()
                     _isLoading.value = false
                     recomputePagedAlbums()
+                    AppLogger.i(
+                        TAG,
+                        "仓库相册列表加载完成: repoId=$repoId, albums=${allAlbums.size}, " +
+                            "pages=${_totalPages.value}, elapsedMs=${System.currentTimeMillis() - startedAt}"
+                    )
                 } else {
-                    // 全量加载（响应式 Flow）
-                    albumRepository.getAllAlbums().collect { allAlbums ->
-                        _allAlbums.value = allAlbums
-                        val tree = buildAlbumTree(allAlbums)
-                        _albumTree.value = tree
-                        _isEmpty.value = tree.isEmpty()
-                        _isLoading.value = false
-                        recomputePagedAlbums()
-                    }
+                    showRepositoryList(cancelLoad = false)
+                    AppLogger.i(TAG, "仓库列表页跳过全量相册树加载")
                 }
             } catch (e: CancellationException) {
                 AppLogger.d(TAG, "相册加载任务已被新请求替换")
@@ -293,14 +296,30 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
 
     /** 返回仓库列表 */
     fun clearRepoSelection() {
+        showRepositoryList()
+    }
+
+    /** 显示仓库列表。仓库列表只依赖仓库表，不触发全量相册树和封面解析。 */
+    fun showRepositoryList(cancelLoad: Boolean = true) {
+        if (cancelLoad) {
+            loadJob?.cancel()
+        }
         _albumTree.value = emptyList()
         _pagedAlbums.value = emptyList()
+        _allAlbums.value = emptyList()
+        flatAlbums = emptyList()
         _selectedRepoId.value = null
         _selectedRepoName.value = null
+        _filterCategoryId.value = null
+        _filterCategoryName.value = null
+        _selectionMode.value = false
+        _selectedAlbumIds.value = emptySet()
         _currentPage.value = 1
         _totalPages.value = 1
+        _isLoading.value = false
+        _isEmpty.value = _repoList.value.isEmpty()
         _isRefreshingRemote.value = false
-        loadAlbums()
+        AppLogger.i(TAG, "显示仓库列表: repos=${_repoList.value.size}")
     }
 
     /**
@@ -390,9 +409,13 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
      * 清除分类筛选，回到全部相册
      */
     fun clearCategoryFilter() {
-        _filterCategoryId.value = null
-        _filterCategoryName.value = null
-        loadAlbums()
+        if (_selectedRepoId.value != null) {
+            _filterCategoryId.value = null
+            _filterCategoryName.value = null
+            loadAlbums()
+        } else {
+            showRepositoryList()
+        }
     }
 
     /**
@@ -420,7 +443,7 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
      */
     private suspend fun buildAlbumTree(allAlbums: List<AlbumEntity>): List<Album> = withContext(Dispatchers.Default) {
         val startedAt = System.currentTimeMillis()
-        val dynamicCoverPaths = loadDynamicCoverPaths(allAlbums)
+        val dynamicCoverPaths = emptyMap<Long, String>()
         val ids = allAlbums.mapTo(mutableSetOf()) { it.id }
         val childrenByParent = allAlbums.groupBy { it.parentAlbumId }
 
@@ -436,7 +459,7 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
         AppLogger.i(
             TAG,
             "相册树构建完成: albums=${allAlbums.size}, roots=${sorted.size}, " +
-                "elapsedMs=${System.currentTimeMillis() - startedAt}"
+                "dynamicCover=false, elapsedMs=${System.currentTimeMillis() - startedAt}"
         )
         sorted
     }
@@ -649,12 +672,36 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
                 AppLogger.i(TAG,
                     "批量添加到分类: categoryId=$categoryId, 成功=$successCount/${albumIds.size}"
                 )
+                categoryFilterCache.clear()
                 // 完成后退出多选模式
                 exitSelectionMode()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 AppLogger.e(TAG, "批量添加到分类失败: categoryId=$categoryId", e)
+            }
+        }
+    }
+
+    /** 将当前选中的相册从正在浏览的分类中移除。 */
+    fun removeSelectedFromActiveCategory() {
+        val categoryId = _filterCategoryId.value ?: return
+        val albumIds = _selectedAlbumIds.value
+        if (albumIds.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                val removed = categoryManager.removeAlbumsFromCategory(albumIds, categoryId)
+                categoryFilterCache.clear()
+                AppLogger.i(
+                    TAG,
+                    "批量从分类移除相册: categoryId=$categoryId, requested=${albumIds.size}, removed=$removed"
+                )
+                exitSelectionMode()
+                loadAlbumsByCategory(categoryId, _filterCategoryName.value ?: "")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "批量从分类移除相册失败: categoryId=$categoryId", e)
             }
         }
     }

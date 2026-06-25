@@ -59,6 +59,13 @@ class CategoryManager(
         categoryDao.deleteCrossRef(albumId, categoryId)
     }
 
+    /** 批量移除某分类下的相册关联，不删除相册或源文件。 */
+    suspend fun removeAlbumsFromCategory(albumIds: Collection<Long>, categoryId: Long): Int {
+        if (albumIds.isEmpty()) return 0
+        AppLogger.i(TAG, "批量移除相册分类关联: categoryId=$categoryId, count=${albumIds.size}")
+        return categoryDao.deleteCrossRefs(categoryId, albumIds.toList())
+    }
+
     /** 获取相册的所有分类 */
     suspend fun getCategoriesForAlbum(albumId: Long): List<CategoryEntity> =
         categoryDao.getCategoriesByAlbum(albumId)
