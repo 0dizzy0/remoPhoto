@@ -20,7 +20,10 @@
 - 首个 Alpha 版本更新为 `0.1.0-alpha.3`（`versionCode = 3`）。
 - 增加 MIT License。
 - 配置并归档 Room v4 schema，构建不再报告缺少 `schemaLocation`。
-- 首个 Alpha 的 Lint 门禁已通过；签名和真机回归仍待完成。
+- 增加本地 Release keystore 初始化脚本和环境变量签名入口，成功生成并校验 signed APK。
+- Release 构建关闭 Logcat 和 DEBUG 文件日志，并统一脱敏 URI、路径、IP 和用户自定义名称。
+- 禁止系统云备份及设备迁移提取应用数据；保留明文 HTTP，但明确仅限可信局域网。
+- 首个 Alpha 的 Lint 门禁已通过；真机回归仍待完成。
 
 ## 发布历史
 

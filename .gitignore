@@ -36,6 +36,7 @@ proguard/
 *.p12
 *.pem
 *.key
+.signing/
 
 # AI / local agent workspaces
 .claude/

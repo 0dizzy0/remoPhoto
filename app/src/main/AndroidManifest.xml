@@ -25,9 +25,13 @@
     <!-- 通知权限（Android 13+ 扫描进度通知） -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- 远程仓库当前依赖任意局域网 IPv4 地址，无法用静态域名白名单表达。
+         因此保留明文 HTTP，但产品边界严格限定为用户信任的同一局域网。 -->
     <application
         android:name=".RemoPhotoApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"

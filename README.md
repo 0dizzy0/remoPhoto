@@ -43,7 +43,20 @@ Windows PowerShell：
 .\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleRelease --console=plain
 ```
 
-当前 `lintDebug` 已达到 `No issues found`，版本号和 Room schema 已完成发布配置；Release 签名与真机回归仍属于 Alpha 发布阻塞项，详见[首个 Alpha Release 计划](docs/releases/08_首个AlphaRelease计划.md)。
+当前 `lintDebug` 已达到 `No issues found`，版本号、Room schema、本地 Release 签名和发布安全策略已完成配置；真机回归仍属于 Alpha 发布阻塞项，详见[首个 Alpha Release 计划](docs/releases/08_首个AlphaRelease计划.md)。
+
+### 本地 Release 签名
+
+首次配置可执行：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup-release-signing.ps1 `
+  -KeytoolPath "<JDK目录>\bin\keytool.exe"
+```
+
+脚本会在项目目录的 `.signing/` 中生成 PKCS12 keystore 和本地属性文件，不会输出密码，也不会覆盖已有密钥。该目录已被 Git 忽略，但必须离线备份；丢失密钥后将无法为同一应用签署后续升级。
+
+CI 或其他开发环境也可以使用 `REMOPHOTO_RELEASE_STORE_FILE`、`REMOPHOTO_RELEASE_STORE_PASSWORD`、`REMOPHOTO_RELEASE_KEY_ALIAS`、`REMOPHOTO_RELEASE_KEY_PASSWORD` 环境变量。
 
 ## 文档
 
@@ -62,6 +75,7 @@ Windows PowerShell：
 .
 ├── app/               # Android 应用模块
 ├── docs/              # 产品、架构、项目、测试和发布文档
+├── scripts/           # 本地工程维护脚本
 ├── gradle/wrapper/    # Gradle Wrapper
 ├── .github/           # GitHub Issue 与 Pull Request 模板
 ├── README.md
@@ -76,6 +90,8 @@ Windows PowerShell：
 ## 安全边界
 
 远程仓库当前使用明文 HTTP，仅用于受信任的同一局域网。不要在公共 Wi-Fi 或公网暴露远程服务。提交日志前请移除完整文件路径、相册名、设备 IP 等敏感信息。
+
+系统云备份和设备迁移不会自动复制应用数据库、设置或连接元信息；数据迁移应使用应用内导入导出。Release 构建关闭 Logcat 和 DEBUG 文件日志，并统一脱敏 URI、路径、IP 与用户自定义名称。
 
 ## 开源许可
 

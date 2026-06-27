@@ -2,6 +2,7 @@ package com.remophoto.util
 
 import android.content.Context
 import android.util.Log
+import com.remophoto.BuildConfig
 import java.io.File
 import java.io.FileWriter
 import java.io.PrintWriter
@@ -47,7 +48,7 @@ object AppLogger {
 
     /** 最低记录级别（低于此级别的日志将被忽略） */
     @Volatile
-    var minLevel: Level = Level.DEBUG
+    var minLevel: Level = if (BuildConfig.DEBUG) Level.DEBUG else Level.INFO
 
     /** 是否启用文件写入 */
     @Volatile
@@ -55,7 +56,7 @@ object AppLogger {
 
     /** 是否启用 Logcat 输出 */
     @Volatile
-    var logcatEnabled: Boolean = true
+    var logcatEnabled: Boolean = BuildConfig.DEBUG
 
     /** 每多少条日志 flush 一次到文件 */
     private const val FLUSH_INTERVAL = 50
@@ -89,6 +90,8 @@ object AppLogger {
         if (initialized) return
 
         try {
+            minLevel = if (BuildConfig.DEBUG) Level.DEBUG else Level.INFO
+            logcatEnabled = BuildConfig.DEBUG
             val externalFilesDir = context.getExternalFilesDir(null)
             if (externalFilesDir != null) {
                 logDir = File(externalFilesDir, "remoPhoto/logs")
@@ -107,10 +110,13 @@ object AppLogger {
             initialized = true
 
             // 启动日志
-            i("AppLogger", "日志系统已初始化，日志目录: ${logDir?.absolutePath}")
+            i(
+                "AppLogger",
+                "日志系统已初始化: minLevel=$minLevel, logcat=$logcatEnabled, file=$fileLogEnabled"
+            )
 
         } catch (e: Exception) {
-            Log.e("AppLogger", "日志系统初始化失败", e)
+            logFallbackError("日志系统初始化失败", e)
         }
     }
 
@@ -161,15 +167,16 @@ object AppLogger {
         if (level.priority < minLevel.priority) return
 
         val timestamp = System.currentTimeMillis()
-        val line = buildLogLine(level, tag, message, throwable, timestamp)
+        val safeMessage = sanitizeForBuild(message)
+        val line = buildLogLine(level, tag, safeMessage, throwable, timestamp)
 
         // 输出到 Logcat
         if (logcatEnabled) {
             when (level) {
-                Level.DEBUG -> Log.d(tag, message, throwable)
-                Level.INFO -> Log.i(tag, message, throwable)
-                Level.WARN -> Log.w(tag, message, throwable)
-                Level.ERROR -> Log.e(tag, message, throwable)
+                Level.DEBUG -> Log.d(tag, safeMessage, throwable)
+                Level.INFO -> Log.i(tag, safeMessage, throwable)
+                Level.WARN -> Log.w(tag, safeMessage, throwable)
+                Level.ERROR -> Log.e(tag, safeMessage, throwable)
             }
         }
 
@@ -204,7 +211,7 @@ object AppLogger {
             sb.append("\n")
             val sw = StringWriter()
             throwable.printStackTrace(PrintWriter(sw))
-            sb.append(sw.toString())
+            sb.append(sanitizeForBuild(sw.toString()))
         }
         return sb.toString()
     }
@@ -227,7 +234,7 @@ object AppLogger {
                 writer.close()
             }
         } catch (e: Exception) {
-            Log.e("AppLogger", "日志写入文件失败", e)
+            logFallbackError("日志写入文件失败", e)
         }
     }
 
@@ -238,6 +245,18 @@ object AppLogger {
         if (today != currentDate || currentLogFile == null) {
             currentDate = today
             currentLogFile = File(dir, "app_${today}.log")
+        }
+    }
+
+    private fun sanitizeForBuild(value: String): String =
+        if (BuildConfig.DEBUG) value else ReleaseLogSanitizer.sanitize(value)
+
+    private fun logFallbackError(message: String, throwable: Throwable) {
+        if (BuildConfig.DEBUG) {
+            Log.e("AppLogger", message, throwable)
+        } else {
+            // 文件日志不可用时仍保留最小故障信号，但不输出可能含路径的异常详情。
+            Log.e("AppLogger", "$message: ${throwable.javaClass.simpleName}")
         }
     }
 }

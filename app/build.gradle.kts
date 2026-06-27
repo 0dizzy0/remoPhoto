@@ -1,8 +1,44 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
+}
+
+val releaseSigningPropertiesFile = rootProject.file(".signing/signing.properties")
+val releaseSigningProperties = Properties().apply {
+    if (releaseSigningPropertiesFile.isFile) {
+        releaseSigningPropertiesFile.inputStream().use { load(it) }
+    }
+}
+val releaseStoreFilePath =
+    System.getenv("REMOPHOTO_RELEASE_STORE_FILE")
+        ?: releaseSigningProperties.getProperty("storeFile")
+val releaseStorePassword =
+    System.getenv("REMOPHOTO_RELEASE_STORE_PASSWORD")
+        ?: releaseSigningProperties.getProperty("storePassword")
+val releaseKeyAlias =
+    System.getenv("REMOPHOTO_RELEASE_KEY_ALIAS")
+        ?: releaseSigningProperties.getProperty("keyAlias")
+val releaseKeyPassword =
+    System.getenv("REMOPHOTO_RELEASE_KEY_PASSWORD")
+        ?: releaseSigningProperties.getProperty("keyPassword")
+val releaseSigningValues = listOf(
+    releaseStoreFilePath,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword
+)
+val releaseSigningConfigured = releaseSigningValues.all { !it.isNullOrBlank() }
+val releaseSigningRequested =
+    releaseSigningPropertiesFile.isFile || releaseSigningValues.any { !it.isNullOrBlank() }
+
+if (releaseSigningRequested && !releaseSigningConfigured) {
+    throw GradleException(
+        "Release signing 配置不完整：请检查 .signing/signing.properties 或 REMOPHOTO_RELEASE_* 环境变量"
+    )
 }
 
 android {
@@ -19,10 +55,28 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                val configuredStoreFile = rootProject.file(checkNotNull(releaseStoreFilePath))
+                if (!configuredStoreFile.isFile) {
+                    throw GradleException("Release keystore 不存在：$configuredStoreFile")
+                }
+                storeFile = configuredStoreFile
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -43,6 +97,7 @@ android {
     }
 
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 }

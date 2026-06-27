@@ -96,8 +96,8 @@ class PermissionHelper(private val activity: ComponentActivity) {
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
         } catch (e: SecurityException) {
-            // 某些 URI 不支持持久化（如虚拟文件），静默失败
-            android.util.Log.w("PermissionHelper", "无法持久化 URI 权限: $uri", e)
+            // 某些 URI 不支持持久化（如虚拟文件），仅记录不含完整 URI 的诊断信息。
+            AppLogger.w("PermissionHelper", "无法持久化 URI 权限: authority=${uri.authority}")
         }
     }
 
