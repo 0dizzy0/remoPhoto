@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.remophoto.BuildConfig
 import com.remophoto.domain.model.SortOrder
 import com.remophoto.domain.model.AlbumSortOrder
 import com.remophoto.ui.components.SettingsInfoRow
@@ -303,7 +304,11 @@ fun SettingsScreen(
             // 开启/关闭开关
             SettingsSwitchRow(
                 label = "允许远程访问",
-                description = if (serverRunning) "服务运行中，局域网设备可浏览本机相册" else "开启后同一 WiFi 下的设备可访问本机图片",
+                description = if (serverRunning) {
+                    "服务运行中，同一 WiFi 设备可读取相册名、文件名和图片内容"
+                } else {
+                    "仅在可信 WiFi 开启；同网设备将可读取相册名、文件名和图片内容"
+                },
                 checked = serverRunning,
                 onCheckedChange = { viewModel.toggleServer(context) }
             )
@@ -339,7 +344,7 @@ fun SettingsScreen(
             }
             OutlinedTextField(
                 value = editDeviceName,
-                onValueChange = { editDeviceName = it },
+                onValueChange = { editDeviceName = it.take(32) },
                 label = { Text("设备名称") },
                 placeholder = { Text("用于局域网内识别本设备") },
                 singleLine = true,
@@ -347,12 +352,18 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
-                supportingText = if (serverRunning) {
-                    { Text("停止服务后可修改") }
-                } else null,
+                supportingText = {
+                    Text(
+                        if (serverRunning) {
+                            "名称会广播给同一局域网；停止服务后可修改"
+                        } else {
+                            "名称会广播给同一局域网，请勿使用真实姓名"
+                        }
+                    )
+                },
                 trailingIcon = {
-                    if (!serverRunning && editDeviceName != deviceName) {
-                        IconButton(onClick = { viewModel.setDeviceName(editDeviceName) }) {
+                    if (!serverRunning && editDeviceName.isNotBlank() && editDeviceName != deviceName) {
+                        IconButton(onClick = { viewModel.setDeviceName(editDeviceName.trim()) }) {
                             Icon(Icons.Default.Check, "保存")
                         }
                     }
@@ -427,7 +438,12 @@ fun SettingsScreen(
                 AlertDialog(
                     onDismissRequest = { viewModel.showExportDialog = false },
                     title = { Text("导出数据库") },
-                    text = { Text("将相册索引和设置导出为备份文件。\n图片文件本身不会被导出。") },
+                    text = {
+                        Text(
+                            "备份包含相册名、文件名、目录信息、设置和远程连接地址，" +
+                                "不包含图片文件或连接凭据。\n备份未加密，请保存在可信位置。"
+                        )
+                    },
                     confirmButton = {
                         TextButton(onClick = {
                             viewModel.showExportDialog = false
@@ -473,7 +489,7 @@ fun SettingsScreen(
 
             SettingsInfoRow(
                 label = "版本",
-                value = "1.0.0-alpha.2"
+                value = BuildConfig.VERSION_NAME
             )
 
             Spacer(modifier = Modifier.height(32.dp))

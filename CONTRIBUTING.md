@@ -25,6 +25,12 @@
 
 ## 质量要求
 
+先执行隐私审计；脚本只报告类别和文件位置，不回显匹配内容：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\audit-repository-privacy.ps1
+```
+
 提交前至少执行与改动范围相符的检查。完整本地门禁为：
 
 ```powershell

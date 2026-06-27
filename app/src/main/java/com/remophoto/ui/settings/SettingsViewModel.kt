@@ -244,10 +244,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun setDeviceName(name: String) {
-        _deviceName.value = name
+        val normalized = name.trim().take(32)
+        if (normalized.isEmpty()) return
+        _deviceName.value = normalized
         viewModelScope.launch {
-            settingsRepository.setDeviceName(name)
-            AppLogger.i(TAG, "设备名称: $name")
+            settingsRepository.setDeviceName(normalized)
+            AppLogger.i(TAG, "局域网设备名称已更新")
         }
     }
 

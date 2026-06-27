@@ -35,3 +35,13 @@ remoPhoto 仍处于 Alpha 准备阶段，暂不承诺稳定的安全更新周期
 必要时可保留稳定 ID、数量、耗时、错误类型和经过散列或截断的路径摘要。
 
 Release 构建默认不输出 Logcat 和 DEBUG 文件日志，并对 URI、路径、IP、主机及用户自定义名称做统一脱敏。该保护不能替代提交附件前的人工检查。
+
+## 仓库隐私审计
+
+提交或公开仓库前执行：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\audit-repository-privacy.ps1
+```
+
+脚本检查已跟踪及未忽略待提交文件中的私钥、常见令牌、硬编码凭据、邮箱、电话号码、本机用户目录和高风险文件类型，只输出类别、文件与行号，不输出命中内容。示例私有网段地址会作为提示保留，不视为个人地址或发布阻塞项。

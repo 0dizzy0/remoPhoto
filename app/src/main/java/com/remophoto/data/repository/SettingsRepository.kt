@@ -22,6 +22,10 @@ private val Context.dataStore by preferencesDataStore(name = "settings")
  */
 class SettingsRepository(private val context: Context) {
 
+    private val defaultDeviceName by lazy {
+        DeviceAliasProvider.get(context.applicationContext)
+    }
+
     companion object {
         private val KEY_DEFAULT_SORT_ORDER = stringPreferencesKey("default_sort_order")
         private val KEY_ALBUM_SORT_ORDER = stringPreferencesKey("album_sort_order")
@@ -91,7 +95,7 @@ class SettingsRepository(private val context: Context) {
 
     /** 设备名称（mDNS 广播用） */
     val deviceName: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[KEY_DEVICE_NAME] ?: android.os.Build.MODEL ?: "Android 设备"
+        prefs[KEY_DEVICE_NAME]?.takeIf { it.isNotBlank() } ?: defaultDeviceName
     }
 
     // ===== 写操作 =====
@@ -139,6 +143,13 @@ class SettingsRepository(private val context: Context) {
     }
 
     suspend fun setDeviceName(name: String) {
-        context.dataStore.edit { it[KEY_DEVICE_NAME] = name }
+        val normalized = name.trim().take(32)
+        context.dataStore.edit { preferences ->
+            if (normalized.isEmpty()) {
+                preferences.remove(KEY_DEVICE_NAME)
+            } else {
+                preferences[KEY_DEVICE_NAME] = normalized
+            }
+        }
     }
 }

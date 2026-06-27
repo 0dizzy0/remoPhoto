@@ -47,7 +47,7 @@ class CategoryViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             try {
                 categoryManager.createCategory(name, color)
-                AppLogger.i(TAG, "分类已创建: $name")
+                AppLogger.i(TAG, "分类已创建")
             } catch (e: Exception) {
                 AppLogger.e(TAG, "创建分类失败", e)
             }

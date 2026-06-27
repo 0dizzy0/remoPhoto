@@ -262,7 +262,8 @@ class MdnsDiscoveryService(
             val displayName = json.optString("deviceName").ifBlank { host }
             discovered[key] = DiscoveredDevice(displayName, host, port, DiscoveryStatus.ACTIVE)
             lastSeen[key] = System.currentTimeMillis()
-            AppLogger.i(TAG, "📡 HTTP 兜底发现: $displayName @ $host:$port")
+            AppLogger.d(TAG, "HTTP 兜底发现详情: name=$displayName, host=$host, port=$port")
+            AppLogger.i(TAG, "HTTP 兜底发现成功")
         } catch (_: Exception) {
             // 大多数地址不可达是正常扫描结果，不逐个刷日志。
         } finally {
@@ -288,7 +289,8 @@ class MdnsDiscoveryService(
         val deviceName = info.getPropertyString("deviceName") ?: fallbackName
         discovered[key] = DiscoveredDevice(deviceName, host, port, DiscoveryStatus.ACTIVE)
         lastSeen[key] = System.currentTimeMillis()
-        AppLogger.i(TAG, "📡 设备已解析[$source]: $deviceName @ $host:$port")
+        AppLogger.d(TAG, "设备解析详情: source=$source, name=$deviceName, host=$host, port=$port")
+        AppLogger.i(TAG, "设备已解析: source=$source")
         emitDevices()
     }
 

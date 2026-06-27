@@ -43,19 +43,19 @@ class RemoteHttpClient {
             val code = conn.responseCode
             val msg = conn.responseMessage
             conn.disconnect()
-            AppLogger.i(TAG, "ping 结果: $host:$port → HTTP $code $msg")
+            AppLogger.i(TAG, "ping 结果: host=$host, port=$port, http=$code $msg")
             code == 200
         } catch (e: java.net.ConnectException) {
-            AppLogger.w(TAG, "ping 连接被拒绝: $host:$port — ${e.message}")
+            AppLogger.w(TAG, "ping 连接被拒绝: host=$host, port=$port — ${e.message}")
             false
         } catch (e: java.net.SocketTimeoutException) {
-            AppLogger.w(TAG, "ping 超时: $host:$port — ${e.message}")
+            AppLogger.w(TAG, "ping 超时: host=$host, port=$port — ${e.message}")
             false
         } catch (e: java.net.UnknownHostException) {
-            AppLogger.w(TAG, "ping 未知主机: $host:$port — ${e.message}")
+            AppLogger.w(TAG, "ping 未知主机: host=$host, port=$port — ${e.message}")
             false
         } catch (e: Exception) {
-            AppLogger.e(TAG, "ping 失败: $host:$port — ${e.javaClass.simpleName}: ${e.message}")
+            AppLogger.e(TAG, "ping 失败: host=$host, port=$port — ${e.javaClass.simpleName}: ${e.message}")
             false
         }
     }
@@ -69,7 +69,7 @@ class RemoteHttpClient {
             val arr = json.getJSONArray("albums")
             (0 until arr.length()).map { RemoteAlbumDto.fromJson(arr.getJSONObject(it)) }
         } catch (e: Exception) {
-            AppLogger.e(TAG, "获取相册列表失败: $host:$port", e)
+            AppLogger.e(TAG, "获取相册列表失败: host=$host, port=$port", e)
             throw e
         }
     }
@@ -91,7 +91,7 @@ class RemoteHttpClient {
                 pageSize = json.getInt("pageSize")
             )
         } catch (e: Exception) {
-            AppLogger.e(TAG, "获取图片列表失败: $host:$port album=$albumId", e)
+            AppLogger.e(TAG, "获取图片列表失败: host=$host, port=$port, album=$albumId", e)
             throw e
         }
     }
@@ -105,7 +105,7 @@ class RemoteHttpClient {
                 val json = getJson("http://$host:$port/api/image/$imageId/info")
                 RemoteImageDto.fromJson(json)
             } catch (e: Exception) {
-                AppLogger.e(TAG, "获取图片信息失败: $host:$port image=$imageId", e)
+                AppLogger.e(TAG, "获取图片信息失败: host=$host, port=$port, image=$imageId", e)
                 throw e
             }
         }
@@ -124,7 +124,7 @@ class RemoteHttpClient {
                 }
                 BufferedInputStream(conn.inputStream)
             } catch (e: Exception) {
-                AppLogger.e(TAG, "获取图片流失败: $host:$port image=$imageId", e)
+                AppLogger.e(TAG, "获取图片流失败: host=$host, port=$port, image=$imageId", e)
                 null
             }
         }
@@ -143,7 +143,7 @@ class RemoteHttpClient {
                 }
                 BufferedInputStream(conn.inputStream)
             } catch (e: Exception) {
-                AppLogger.e(TAG, "获取缩略图流失败: $host:$port image=$imageId", e)
+                AppLogger.e(TAG, "获取缩略图流失败: host=$host, port=$port, image=$imageId", e)
                 null
             }
         }

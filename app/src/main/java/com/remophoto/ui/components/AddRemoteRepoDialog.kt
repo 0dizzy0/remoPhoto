@@ -197,7 +197,7 @@ fun AddRemoteRepoDialog(
                                     scope.launch {
                                         testing = true
                                         testResult = null
-                                        AppLogger.i("AddRemoteRepo", "手动测试连接: $host:$port")
+                                        AppLogger.i("AddRemoteRepo", "手动测试连接: host=$host, port=$port")
                                         testResult = try {
                                             val r = RemoteHttpClient().ping(host, port)
                                             AppLogger.i("AddRemoteRepo", "手动测试结果: $r")
@@ -323,7 +323,8 @@ private suspend fun addRemoteRepo(
     onError: (String) -> Unit
 ) {
     try {
-        AppLogger.i("AddRemoteRepo", "开始添加远程仓库: $displayName @ $host:$port")
+        AppLogger.d("AddRemoteRepo", "添加远程仓库详情: name=$displayName, host=$host, port=$port")
+        AppLogger.i("AddRemoteRepo", "开始添加远程仓库")
         val deps = context.dependencies
         val connDao = deps.remoteConnectionDao
         val repoDao = deps.repositoryDao
@@ -332,7 +333,7 @@ private suspend fun addRemoteRepo(
         val wlm = com.remophoto.data.server.WifiLockManager(context)
         val myIp = wlm.getLanIp()
         if (myIp != null && host == myIp) {
-            AppLogger.w("AddRemoteRepo", "拒绝添加本机: $host")
+            AppLogger.w("AddRemoteRepo", "拒绝添加本机: host=$host")
             onError("无法添加本设备自身，请在其他设备上连接此设备")
             return
         }
@@ -395,7 +396,7 @@ private suspend fun addRemoteRepo(
             throw e
         }
 
-        AppLogger.i("AddRemoteRepo", "✅ 远程仓库已添加: $displayName @ $host:$port (connId=$connId)")
+        AppLogger.i("AddRemoteRepo", "远程仓库已添加: connId=$connId")
         onSuccess()
     } catch (e: Exception) {
         AppLogger.e("AddRemoteRepo", "❌ 添加远程仓库失败", e)

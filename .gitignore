@@ -5,7 +5,7 @@ build/
 .kotlin/
 
 # Android
-/local.properties
+local.properties
 *.iml
 .idea/
 .DS_Store
@@ -37,6 +37,21 @@ proguard/
 *.pem
 *.key
 .signing/
+signing.properties
+keystore.properties
+secrets.properties
+
+# Environment and private runtime data
+.env
+.env.*
+!.env.example
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.wal
+*.shm
 
 # AI / local agent workspaces
 .claude/

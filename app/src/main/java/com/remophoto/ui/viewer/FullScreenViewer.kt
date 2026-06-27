@@ -1,9 +1,11 @@
 package com.remophoto.ui.viewer
 
 import android.app.Activity
+import android.content.ClipData
 import android.content.Intent
 import android.graphics.Color as AndroidColor
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
@@ -418,26 +420,37 @@ fun FullScreenViewer(
                 text = {
                     Column {
                         TextButton(
-                            onClick = {
+                            onClick = share@{
                                 showLongPressMenu = false
-                                // 分享图片
+                                val source = currentImage.filePath
+                                val shareUri = try {
+                                    when {
+                                        source.startsWith("content://") -> Uri.parse(source)
+                                        source.startsWith("/") -> File(source)
+                                            .takeIf { it.isFile }
+                                            ?.let { file ->
+                                                FileProvider.getUriForFile(
+                                                    context,
+                                                    "${context.packageName}.fileprovider",
+                                                    file
+                                                )
+                                            }
+                                        else -> null
+                                    }
+                                } catch (e: Exception) {
+                                    AppLogger.e("FullScreenViewer", "创建图片分享 URI 失败", e)
+                                    null
+                                }
+                                if (shareUri == null) {
+                                    Toast.makeText(context, "当前图片无法分享", Toast.LENGTH_SHORT).show()
+                                    return@share
+                                }
+
                                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                     type = currentImage.mimeType ?: "image/*"
-                                    val file = File(currentImage.filePath)
-                                    if (file.exists()) {
-                                        try {
-                                            val uri = FileProvider.getUriForFile(
-                                                context,
-                                                "${context.packageName}.fileprovider",
-                                                file
-                                            )
-                                            putExtra(Intent.EXTRA_STREAM, uri)
-                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        } catch (e: Exception) {
-                                            // FileProvider 未配置时使用文件路径
-                                            putExtra(Intent.EXTRA_STREAM, Uri.fromFile(file))
-                                        }
-                                    }
+                                    putExtra(Intent.EXTRA_STREAM, shareUri)
+                                    clipData = ClipData.newRawUri("shared_image", shareUri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }
                                 context.startActivity(Intent.createChooser(shareIntent, "分享图片"))
                             },

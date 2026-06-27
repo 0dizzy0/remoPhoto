@@ -29,6 +29,9 @@ internal object ReleaseLogSanitizer {
     private val ipv6 = Regex(
         """(?<![a-fA-F0-9:])(?:[a-fA-F0-9]{0,4}:){2,}[a-fA-F0-9]{0,4}(?![a-fA-F0-9:])"""
     )
+    private val unknownHostException = Regex(
+        """(?i)(UnknownHostException:\s*)[^\r\n]+"""
+    )
     private val quotedUserName = Regex("""(相册|仓库|设备)\s*["“][^"”]+["”]""")
 
     fun sanitize(value: String): String {
@@ -40,6 +43,9 @@ internal object ReleaseLogSanitizer {
         result = androidPath.replace(result, "<path>")
         result = ipv4.replace(result, "<ip>")
         result = ipv6.replace(result, "<ip>")
+        result = unknownHostException.replace(result) { match ->
+            "${match.groupValues[1]}<host>"
+        }
         return quotedUserName.replace(result) { match ->
             "${match.groupValues[1]} \"<redacted>\""
         }

@@ -9,12 +9,14 @@ class ReleaseLogSanitizerTest {
     @Test
     fun `redacts network and user controlled values`() {
         val sanitized = ReleaseLogSanitizer.sanitize(
-            "设备 name=\"Living Room\" @ 192.168.1.8:8080，连接 https://192.168.1.8/api"
+            "设备 name=\"Living Room\" @ 192.168.1.8:8080，连接 https://192.168.1.8/api\n" +
+                "java.net.UnknownHostException: family-phone.local"
         )
 
         assertFalse(sanitized.contains("Living Room"))
         assertFalse(sanitized.contains("192.168.1.8"))
         assertFalse(sanitized.contains("https://"))
+        assertFalse(sanitized.contains("family-phone.local"))
         assertTrue(sanitized.contains("name=<redacted>"))
         assertTrue(sanitized.contains("<ip>"))
         assertTrue(sanitized.contains("<uri>"))
@@ -24,7 +26,7 @@ class ReleaseLogSanitizerTest {
     fun `redacts Android Windows and content paths`() {
         val sanitized = ReleaseLogSanitizer.sanitize(
             "path=/storage/emulated/0/DCIM/private.jpg, " +
-                "backup=C:\\Users\\name\\Pictures\\private.jpg, " +
+                "backup=D:\\Fixtures\\Pictures\\private.jpg, " +
                 "uri=content://com.android.providers.media/document/image%3A1"
         )
 

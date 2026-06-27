@@ -40,7 +40,7 @@ class RemoteConnectionRepository(
         return try {
             httpClient.ping(host, port)
         } catch (e: Exception) {
-            AppLogger.w(TAG, "连接测试失败: $host:$port — ${e.message}")
+            AppLogger.w(TAG, "连接测试失败: host=$host, port=$port — ${e.message}")
             false
         }
     }
