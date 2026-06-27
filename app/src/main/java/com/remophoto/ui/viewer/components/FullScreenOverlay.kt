@@ -43,12 +43,12 @@ fun FullScreenOverlay(
     currentIndex: Int,
     totalCount: Int,
     isPlaying: Boolean,
-    intervalSeconds: Int = 3,
     onBack: () -> Unit,
     onTogglePlay: () -> Unit,
-    onIntervalChange: (Int) -> Unit = {},
     onSeekTo: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    intervalSeconds: Int = 3,
+    onIntervalChange: (Int) -> Unit = {}
 ) {
     Box(modifier = modifier.fillMaxSize()) {
         // 顶部栏

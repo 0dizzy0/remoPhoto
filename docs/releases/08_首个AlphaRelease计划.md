@@ -1,6 +1,6 @@
 # remoPhoto 首个 Alpha Release 计划
 
-更新时间：2026-06-23
+更新时间：2026-06-27
 
 ## 1. 发布目标
 
@@ -24,12 +24,14 @@
 | Release 产物 | 当前为 `app-release-unsigned.apk` | 阻塞，需要签名 |
 | JVM 单元测试 | 3 个用例通过 | 可作为 alpha 起点，但覆盖不足 |
 | Android 仪器/Compose 测试 | 暂无 | 不阻塞 alpha，但需要列入后续 |
-| Lint | `lintDebug` 失败：1 error、27 warnings | 阻塞，需要至少修复 error |
+| Lint | 2026-06-27：`No issues found` | 达标；含 2 项局部、带原因的例外 |
 | Room 数据库 | 当前版本 v4，迁移链 1->2->3->4 存在 | 需要补 schema 导出和最小迁移验证 |
 | 远程仓库 | 已有多轮真机验证和大仓库优化 | 可纳入 alpha，但需列已知限制 |
 | 扫描大仓库 | 已引入 WorkManager、Spool、事务切换 | 可纳入 alpha，需保守说明 |
-| 发布文档 | 缺少专门 release checklist | 阻塞，需要补齐 |
+| 发布文档 | 已有计划、检查清单和测试记录模板 | 模板达标，发布前仍需填写实际结果 |
 | Git 状态 | 当前工作区存在未提交改动和未跟踪目录 | 阻塞，需要整理提交范围 |
+| GitHub 基础文档 | README、贡献、安全、更新日志和模板已补齐 | 基本达标 |
+| 开源许可证 | 尚未选择 | 公开分发源码前阻塞 |
 
 ## 3. Alpha 范围
 
@@ -63,12 +65,13 @@
 
 这些任务建议完成后再发布安装包。
 
-### A1. 修复 Lint Error
+### A1. Lint 门禁（已完成）
 
-当前 `:app:lintDebug` 失败，错误位于：
+历史 Compose error 在本轮复核时已不再复现。本轮进一步处理剩余 27 条 warning：
 
-- `app/src/main/java/com/remophoto/ui/albumlist/AlbumListScreen.kt`
-- `AnimatedContent` 的 target state 参数未使用。
+- 25 条通过代码或资源修正。
+- `OldTargetApi`：当前 Alpha 固定 targetSdk 35，API 36/AGP 升级留作独立兼容任务。
+- `ObsoleteSdkInt`：AAPT 要求自适应图标保留在 `mipmap-anydpi-v26`，仅对该路径例外。
 
 验收标准：
 
@@ -76,9 +79,7 @@
 .\gradlew.bat :app:lintDebug --console=plain
 ```
 
-结果必须为 `BUILD SUCCESSFUL`。
-
-Lint warning 可以分级处理，不要求 alpha 前全部清零，但需要记录可接受原因。
+2026-06-27 验证结果为 `BUILD SUCCESSFUL` 和 `No issues found`。后续代码变更不得新增未处理告警，`app/lint.xml` 的例外不得无理由扩大。
 
 ### A2. 配置 Release 签名
 
@@ -132,11 +133,14 @@ Lint warning 可以分级处理，不要求 alpha 前全部清零，但需要记
 
 - `.agents/`
 - `.cache/`
+- `.claude/`
 - `.codex/`
-- `design/`
 - `skills-lock.json`
 - `AGENTS.md`
+- `CLAUDE.md`
 - launcher icon 相关资源
+
+其中本地 AI 工具目录和 `skills-lock.json` 已由 `.gitignore` 排除；`docs/design/` 是明确的项目设计文档目录，可以纳入版本控制。`AGENTS.md`、`CLAUDE.md` 是否公开应按仓库协作策略逐项确认。
 
 验收标准：
 
@@ -163,7 +167,7 @@ Alpha 前最低验收：
 
 ### A6. 最小发布回归
 
-Alpha 前至少完成一轮手工 smoke test，并记录结果到 `requirement_doc/07_测试用例.md` 或 release notes。
+Alpha 前至少完成一轮手工 Smoke Test，范围以[核心功能测试用例](../testing/07_测试用例.md)为准，结果使用[测试执行记录模板](../testing/测试执行记录模板.md)归档并链接到 Release Notes。
 
 最低覆盖：
 
@@ -183,6 +187,19 @@ Alpha 前至少完成一轮手工 smoke test，并记录结果到 `requirement_d
 - 数据库导出。
 - 数据库导入或至少导入文件格式校验。
 - crash buffer 无新增 `FATAL EXCEPTION`。
+
+执行结果不得直接堆叠到测试设计正文，应复制[测试执行记录模板](../testing/测试执行记录模板.md)形成独立记录。
+
+### A7. 确定开源许可证
+
+项目目标是个人开源发布，但当前仓库没有 `LICENSE`。公开可见不等于授予复制、修改或分发权。
+
+验收标准：
+
+- 根据预期授权边界选择许可证。
+- 仓库根目录存在完整 `LICENSE`。
+- README 和 GitHub Release 的许可证表述一致。
+- 第三方依赖许可证与选定分发方式不存在明显冲突。
 
 ## 5. Alpha 强烈建议项
 
@@ -244,7 +261,7 @@ Alpha 后第一优先级建议补：
 
 ### B4. Release Notes
 
-建议新增 `CHANGELOG.md` 或在 GitHub Release 中写明：
+当前已建立 `CHANGELOG.md` 骨架。发布前仍需在 Changelog 和 GitHub Release 中写明：
 
 - 本版本是 Alpha。
 - 已验证设备和 Android 版本。
@@ -266,7 +283,6 @@ Alpha 后第一优先级建议补：
 
 以下事项不建议阻塞首个 Alpha：
 
-- 清理所有 lint warning。
 - 全量 Compose UI 自动化测试。
 - 完整 adb 自动回归脚本。
 - SMB 支持。
@@ -284,9 +300,9 @@ Alpha 后第一优先级建议补：
 2. 更新版本号。
 3. 配置签名。
 4. 更新文档：
-   - `requirement_doc/项目状态.md`
-   - `requirement_doc/07_测试用例.md`
-   - release notes 或 changelog
+   - [项目状态](../project/项目状态.md)
+   - [核心功能测试用例](../testing/07_测试用例.md)
+   - [更新日志](../../CHANGELOG.md)和 Release Notes
 5. 整理 Git 工作区。
 
 ### 7.2 本地门禁
@@ -359,7 +375,7 @@ Get-FileHash app\build\outputs\apk\release\<signed-apk-name>.apk -Algorithm SHA2
 - [ ] Release 签名配置可用。
 - [ ] 生成 signed release APK/AAB。
 - [ ] `:app:testDebugUnitTest` 通过。
-- [ ] `:app:lintDebug` 通过，或仅剩已记录且接受的 warning。
+- [ ] `:app:lintDebug` 通过并输出 `No issues found`。
 - [ ] `:app:assembleRelease` 通过。
 - [ ] Room schema 导出问题已处理或明确记录。
 - [ ] 真机覆盖安装成功。
@@ -390,20 +406,19 @@ Get-FileHash app\build\outputs\apk\release\<signed-apk-name>.apk -Algorithm SHA2
 3. 补远程 API 兼容测试。
 4. 补导入导出测试。
 5. 做日志脱敏和 release 日志等级配置。
-6. 清理 lint warning。
-7. 增加基础 Compose UI 测试。
-8. 将真机 smoke test 脚本化。
-9. 评估 SMB、HTTPS/认证、扫描检查点等 beta 范围。
+6. 增加基础 Compose UI 测试。
+7. 将真机 smoke test 脚本化。
+8. 评估 SMB、HTTPS/认证、扫描检查点等 beta 范围。
 
 ## 10. 发布建议结论
 
 当前项目已经具备首个 Alpha 的功能基础，但不建议立即发包。建议先完成以下最小集合：
 
-1. 修复 lint error。
-2. 配置 signed release。
-3. 更新版本号。
-4. 整理 Git 工作区。
-5. 补一次手工 smoke test 记录。
-6. 写 release notes。
+1. 配置 signed release。
+2. 更新版本号。
+3. 整理 Git 工作区。
+4. 补一次手工 smoke test 记录。
+5. 写 release notes。
+6. 确定开源许可证。
 
 完成后即可作为个人开源项目的首个 Alpha 发布；其余测试体系、日志策略和安全边界可以在 Alpha 发布后的短周期迭代中继续增强。

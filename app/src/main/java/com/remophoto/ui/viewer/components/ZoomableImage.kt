@@ -47,10 +47,10 @@ fun ZoomableImage(
     onScaleChange: (Float) -> Unit,
     onDoubleTap: () -> Unit,
     onSingleTap: (Offset) -> Unit,
+    modifier: Modifier = Modifier,
     onLongPress: (Offset) -> Unit = {},
     onScrollUp: () -> Unit = {},
-    onScrollDown: () -> Unit = {},
-    modifier: Modifier = Modifier
+    onScrollDown: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val currentScale by rememberUpdatedState(scale)

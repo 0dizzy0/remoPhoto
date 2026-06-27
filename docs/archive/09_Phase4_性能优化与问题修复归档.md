@@ -1,10 +1,10 @@
 # Phase 4 性能优化与问题修复归档
 
-更新时间：2026-06-23
+更新时间：2026-06-27
 
 ## 1. 文档定位
 
-本文是 Phase 4 远程仓库和大仓库性能修复的归档摘要。当前开发计划以 `05_开发计划.md` 为准，alpha 发布以 `08_首个AlphaRelease计划.md` 为准。
+本文是 Phase 4 远程仓库和大仓库性能修复的归档摘要。当前开发计划以[开发计划](../project/05_开发计划.md)为准，Alpha 发布以[首个 Alpha Release 计划](../releases/08_首个AlphaRelease计划.md)为准。
 
 ## 2. 背景
 
@@ -36,7 +36,7 @@ Phase 4 引入 HTTP/mDNS 远程仓库后，真机反馈集中在五类问题：
 ### 远程相册封面
 
 - `/api/albums` 增加 `coverImageId`。
-- `/api/thumb/{id}` 返回下采样缩略图，避免把原图作为封面传输。
+- `/api/image/{id}/thumb` 返回下采样缩略图，避免把原图作为封面传输。
 - 客户端使用远程 thumbnail loader 加载封面。
 - 兼容旧服务端缺少 `coverImageId` 的情况。
 

@@ -1,0 +1,80 @@
+name: 缺陷报告
+description: 报告可复现的功能、稳定性、性能或兼容问题
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请勿上传未脱敏的图片、数据库、备份、完整路径、设备 IP 或签名材料。
+  - type: input
+    id: version
+    attributes:
+      label: 版本或 Commit
+      description: APK versionName/versionCode 或 Git commit hash
+      placeholder: 1.0.0-alpha.2 / 1353f3a
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 设备环境
+      description: 设备型号、Android 版本；远程问题请写明设备数量和网络类型
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: 功能模块
+      options:
+        - 安装或启动
+        - 本地仓库与扫描
+        - 相册列表与分类
+        - 图片浏览与全屏
+        - 设置与缓存
+        - 远程服务与同步
+        - 导入导出
+        - 性能或内存
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: preconditions
+    attributes:
+      label: 前置条件和测试数据
+      description: 仓库规模、图片格式、是否覆盖安装、网络状态等
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 已脱敏证据
+      description: Crash buffer、AppLogger 摘要、截图或录屏；请先移除敏感信息
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 隐私确认
+      options:
+        - label: 我已移除附件中的完整路径、相册名、设备地址、凭据和个人图片
+          required: true

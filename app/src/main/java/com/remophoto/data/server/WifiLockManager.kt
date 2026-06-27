@@ -22,6 +22,7 @@ class WifiLockManager(context: Context) {
     companion object {
         private const val TAG = "WifiLockManager"
         private const val LOCK_TAG = "remoPhoto:mDNS"
+        private const val WAKE_LOCK_TIMEOUT_MS = 10 * 60 * 1000L
     }
 
     private val wifiManager: WifiManager by lazy {
@@ -96,6 +97,11 @@ class WifiLockManager(context: Context) {
         }
     }
 
+    /**
+     * 为远程服务启动和自愈提供有限时长的 CPU 唤醒窗口。
+     *
+     * 前台服务负责长期生命周期，WakeLock 只覆盖启动/恢复阶段，避免无限持锁耗电。
+     */
     fun acquireWakeLock() {
         try {
             if (wakeLock == null) {
@@ -103,8 +109,12 @@ class WifiLockManager(context: Context) {
                     setReferenceCounted(false)
                 }
             }
-            if (wakeLock?.isHeld != true) wakeLock?.acquire()
-            AppLogger.i(TAG, "PARTIAL_WAKE_LOCK 已获取")
+            if (wakeLock?.isHeld != true) {
+                wakeLock?.acquire(WAKE_LOCK_TIMEOUT_MS)
+                AppLogger.i(TAG, "PARTIAL_WAKE_LOCK 已获取: timeoutMs=$WAKE_LOCK_TIMEOUT_MS")
+            } else {
+                AppLogger.d(TAG, "PARTIAL_WAKE_LOCK 已持有，跳过重复获取")
+            }
         } catch (e: Exception) {
             AppLogger.e(TAG, "获取 PARTIAL_WAKE_LOCK 失败", e)
         }

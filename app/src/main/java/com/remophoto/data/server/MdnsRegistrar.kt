@@ -2,7 +2,6 @@ package com.remophoto.data.server
 
 import android.content.Context
 import android.net.wifi.WifiManager
-import android.provider.Settings
 import com.remophoto.util.AppLogger
 import com.remophoto.util.Constants
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -66,10 +65,7 @@ class MdnsRegistrar(private val context: Context) {
                 "deviceName" to deviceName,
                 "version" to "1.0.0",
                 // 用稳定实例 ID 过滤自身；仅比较 IP 在多网卡/IPv6 场景下不可靠。
-                "instanceId" to Settings.Secure.getString(
-                    context.contentResolver,
-                    Settings.Secure.ANDROID_ID
-                )
+                "instanceId" to MdnsInstanceIdProvider.get(context)
             )
 
             serviceInfo = ServiceInfo.create(
@@ -118,10 +114,7 @@ class MdnsRegistrar(private val context: Context) {
                 mapOf<String, Any?>(
                     "deviceName" to newName,
                     "version" to "1.0.0",
-                    "instanceId" to Settings.Secure.getString(
-                        context.contentResolver,
-                        Settings.Secure.ANDROID_ID
-                    )
+                    "instanceId" to MdnsInstanceIdProvider.get(context)
                 )
             )
             AppLogger.d(TAG, "mDNS TXT 记录已更新: $newName")

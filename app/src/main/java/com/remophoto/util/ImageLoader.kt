@@ -41,9 +41,7 @@ object ImageLoaderFactory {
                 add(GifDecoder.Factory())
                 add(RemoteImageFetcher.Factory())
                 // Android 9+ 内置 ImageDecoder 支持 WebP 动图
-                if (android.os.Build.VERSION.SDK_INT >= 28) {
-                    add(ImageDecoderDecoder.Factory())
-                }
+                add(ImageDecoderDecoder.Factory())
             }
             // 跨 fade 动画（150ms，降低视觉延迟）
             .crossfade(150)
@@ -130,9 +128,7 @@ object ImageLoaderFactory {
             .components {
                 add(RemoteImageFetcher.Factory())
                 add(GifDecoder.Factory())
-                if (android.os.Build.VERSION.SDK_INT >= 28) {
-                    add(ImageDecoderDecoder.Factory())
-                }
+                add(ImageDecoderDecoder.Factory())
             }
             .crossfade(150)
             .diskCachePolicy(CachePolicy.ENABLED)

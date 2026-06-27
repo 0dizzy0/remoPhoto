@@ -2,9 +2,7 @@ package com.remophoto.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -38,10 +36,8 @@ import com.remophoto.util.AppLogger
 @Composable
 fun ImageThumbnail(
     image: ImageItem,
-    onClick: () -> Unit = {},
-    modifier: Modifier = Modifier
-        .fillMaxWidth()
-        .aspectRatio(1f)
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit = {}
 ) {
     Surface(
         onClick = onClick,

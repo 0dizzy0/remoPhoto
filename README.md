@@ -1,0 +1,81 @@
+# remoPhoto
+
+remoPhoto 是一款面向 Android 的本地与局域网相册管理应用。它以用户授权的文件目录作为图片仓库，按子目录建立相册索引，并提供分页、排序、分类、全屏浏览和可信局域网设备间共享能力。
+
+> 当前处于首个 Alpha 发布准备阶段。源码配置版本为 `1.0.0-alpha.2`，尚未提供经过完整发布门禁验证的正式安装包。
+
+## 核心能力
+
+- 通过 SAF 添加多个本地图片仓库并持久化授权。
+- 扫描 PNG、JPG/JPEG、GIF、WebP、BMP，按目录生成层级相册。
+- 相册分页、网格/列表切换、排序和名称模糊定位。
+- 图片网格与全屏浏览，支持手势、音量键、鼠标滚轮和自动播放。
+- 创建分类并关联本地或已连接的远程相册。
+- 通过 HTTP + mDNS 在同一可信局域网内发现和浏览其他 Android 设备。
+- 导入导出数据库与设置，不导出远程凭据。
+- 为扫描、同步、服务和备份流程保留可观测日志。
+
+## 技术栈
+
+- Kotlin、Jetpack Compose、Material 3
+- MVVM + Repository + UseCase
+- Room、DataStore、WorkManager
+- Coil、NanoHTTPd、JmDNS
+- minSdk 29，targetSdk 35，JDK 17
+
+## 本地构建
+
+前置条件：
+
+- JDK 17
+- Android SDK 35
+- 可用的 Android SDK 路径配置
+
+Windows PowerShell：
+
+```powershell
+.\gradlew.bat :app:assembleDebug --console=plain
+```
+
+基础质量检查：
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleRelease --console=plain
+```
+
+当前 `lintDebug` 已达到 `No issues found`；Release 签名、版本号、Room schema 和真机回归仍属于 Alpha 发布阻塞项，详见[首个 Alpha Release 计划](docs/releases/08_首个AlphaRelease计划.md)。
+
+## 文档
+
+- [文档中心](docs/README.md)
+- [项目状态](docs/project/项目状态.md)
+- [功能规格](docs/product/02_功能规格说明.md)
+- [技术方案](docs/architecture/03_技术方案概要.md)
+- [测试用例](docs/testing/07_测试用例.md)
+- [Alpha 发布计划](docs/releases/08_首个AlphaRelease计划.md)
+- [贡献指南](CONTRIBUTING.md)
+- [安全说明](SECURITY.md)
+
+## 项目目录
+
+```text
+.
+├── app/               # Android 应用模块
+├── docs/              # 产品、架构、项目、测试和发布文档
+├── gradle/wrapper/    # Gradle Wrapper
+├── .github/           # GitHub Issue 与 Pull Request 模板
+├── README.md
+├── CONTRIBUTING.md
+├── SECURITY.md
+└── CHANGELOG.md
+```
+
+`.idea/`、`.gradle/`、`.kotlin/`、`local.properties`、构建产物、签名文件和本地 AI 工具目录不会提交到仓库。
+
+## 安全边界
+
+远程仓库当前使用明文 HTTP，仅用于受信任的同一局域网。不要在公共 Wi-Fi 或公网暴露远程服务。提交日志前请移除完整文件路径、相册名、设备 IP 等敏感信息。
+
+## 开源许可
+
+仓库尚未声明开源许可证。在许可证确定并加入 `LICENSE` 前，代码默认受版权保护；公开可见不等同于获得复制、修改或分发授权。

@@ -1,7 +1,6 @@
 package com.remophoto.data.server
 
 import android.content.Context
-import android.provider.Settings
 import com.remophoto.util.AppLogger
 import com.remophoto.util.Constants
 import kotlinx.coroutines.CoroutineScope
@@ -83,10 +82,7 @@ class MdnsDiscoveryService(
     private val discovered = ConcurrentHashMap<String, DiscoveredDevice>() // key = "host:port"
     private val lastSeen = ConcurrentHashMap<String, Long>()
     private var localIp: String? = null  // 用于过滤自身
-    private val localInstanceId = Settings.Secure.getString(
-        context.applicationContext.contentResolver,
-        Settings.Secure.ANDROID_ID
-    )
+    private val localInstanceId = MdnsInstanceIdProvider.get(context)
     private val scanScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var activeScanJob: Job? = null
     private var subnetFallbackCompleted = false

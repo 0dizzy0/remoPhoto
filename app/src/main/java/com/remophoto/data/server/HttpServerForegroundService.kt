@@ -295,6 +295,7 @@ class HttpServerForegroundService : Service() {
                     AppLogger.w(TAG, "自愈延后: reason=$reason, LAN IP 不可用")
                     return@withLock
                 }
+                wifiLockManager?.acquireWakeLock()
                 val needsHttpRebind = !manager.isRunning() || currentIp != lastLanIp
                 AppLogger.i(
                     TAG,

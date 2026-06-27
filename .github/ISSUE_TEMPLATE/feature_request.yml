@@ -1,0 +1,47 @@
+name: 功能建议
+description: 提议新增能力或改进行为
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决的问题
+      description: 描述具体使用场景和当前阻碍，不要只写解决方案名称
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+      description: 说明交互、数据或兼容性要求
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: 影响范围
+      options:
+        - 本地仓库
+        - 相册与分类
+        - 图片浏览
+        - 远程仓库
+        - 导入导出
+        - 设置与主题
+        - 工程质量
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 替代方案和取舍
+      description: 已尝试的替代方式、性能/安全/兼容成本
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: 范围确认
+      options:
+        - label: 我已查阅当前 Alpha 范围和非目标
+          required: true

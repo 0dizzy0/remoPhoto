@@ -19,19 +19,19 @@ import androidx.compose.ui.unit.dp
  *
  * @param icon 图标（emoji 字符，如 "📷"）
  * @param title 主标题
+ * @param modifier 布局修饰符
  * @param subtitle 副标题/说明文字
  * @param actionLabel 操作按钮文字（如"添加仓库"），null 则不显示
  * @param onAction 操作按钮回调
- * @param modifier 布局修饰符
  */
 @Composable
 fun EmptyStateView(
     icon: String,
     title: String,
+    modifier: Modifier = Modifier,
     subtitle: String? = null,
     actionLabel: String? = null,
-    onAction: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    onAction: (() -> Unit)? = null
 ) {
     Box(
         modifier = modifier.fillMaxSize(),

@@ -111,6 +111,10 @@ fun GalleryScreen(
                 }
                 isGridView -> {
                     val gridState = rememberLazyGridState()
+                    val columns = 2
+                    val currentRow by remember(gridState) {
+                        derivedStateOf { gridState.firstVisibleItemIndex / columns }
+                    }
                     Box(modifier = Modifier
                         .fillMaxSize()
                         .onGloballyPositioned { coords ->
@@ -132,6 +136,9 @@ fun GalleryScreen(
                             ) { index, image ->
                                 ImageThumbnail(
                                     image = image,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(1f),
                                     onClick = {
                                         if (isNavigating) return@ImageThumbnail
                                         isNavigating = true
@@ -144,10 +151,9 @@ fun GalleryScreen(
                             }
                         }
                         if (images.size > 20) {
-                            val columns = 2
                             DraggableScrollbar(
                                 totalRows = (images.size + columns - 1) / columns,
-                                currentRow = gridState.firstVisibleItemIndex / columns,
+                                currentRow = currentRow,
                                 isScrollInProgress = gridState.isScrollInProgress,
                                 onScrollToRow = { row -> gridState.scrollToItem(row * columns) },
                                 modifier = Modifier.align(Alignment.CenterEnd)
@@ -157,6 +163,9 @@ fun GalleryScreen(
                 }
                 else -> {
                     val listState = rememberLazyListState()
+                    val currentRow by remember(listState) {
+                        derivedStateOf { listState.firstVisibleItemIndex }
+                    }
                     Box(modifier = Modifier.fillMaxSize()) {
                         LazyColumn(
                             state = listState,
@@ -185,7 +194,7 @@ fun GalleryScreen(
                         if (images.size > 20) {
                             DraggableScrollbar(
                                 totalRows = images.size,
-                                currentRow = listState.firstVisibleItemIndex,
+                                currentRow = currentRow,
                                 isScrollInProgress = listState.isScrollInProgress,
                                 onScrollToRow = { row -> listState.scrollToItem(row) },
                                 modifier = Modifier.align(Alignment.CenterEnd)

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!--
+      API 36 已安装，但当前 Alpha 的 AGP、发布计划和验证矩阵均固定在 API 35。
+      平台升级应作为独立任务完成兼容性验证，不应为了消除提示直接改变 targetSdk。
+    -->
+    <issue id="OldTargetApi">
+        <ignore path="build.gradle.kts" />
+    </issue>
+
+    <!-- AAPT 要求 adaptive-icon XML 保留在带 v26 限定符的资源目录中。 -->
+    <issue id="ObsoleteSdkInt">
+        <ignore path="src/main/res/mipmap-anydpi-v26" />
+    </issue>
+</lint>

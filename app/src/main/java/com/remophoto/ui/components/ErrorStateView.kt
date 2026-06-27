@@ -18,14 +18,14 @@ import androidx.compose.ui.unit.dp
  * - 网络不可用（远期）
  *
  * @param message 错误描述
- * @param onRetry 重试按钮回调，null 则不显示
  * @param modifier 布局修饰符
+ * @param onRetry 重试按钮回调，null 则不显示
  */
 @Composable
 fun ErrorStateView(
     message: String,
-    onRetry: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onRetry: (() -> Unit)? = null
 ) {
     Box(
         modifier = modifier.fillMaxSize(),
