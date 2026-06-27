@@ -2,7 +2,7 @@
 
 remoPhoto 是一款面向 Android 的本地与局域网相册管理应用。它以用户授权的文件目录作为图片仓库，按子目录建立相册索引，并提供分页、排序、分类、全屏浏览和可信局域网设备间共享能力。
 
-> 当前处于首个 Alpha 发布准备阶段。源码配置版本为 `1.0.0-alpha.2`，尚未提供经过完整发布门禁验证的正式安装包。
+> 当前处于首个 Alpha 发布准备阶段。源码配置版本为 `0.1.0-alpha.3`，尚未提供经过完整发布门禁验证的正式安装包。
 
 ## 核心能力
 
@@ -43,7 +43,7 @@ Windows PowerShell：
 .\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleRelease --console=plain
 ```
 
-当前 `lintDebug` 已达到 `No issues found`；Release 签名、版本号、Room schema 和真机回归仍属于 Alpha 发布阻塞项，详见[首个 Alpha Release 计划](docs/releases/08_首个AlphaRelease计划.md)。
+当前 `lintDebug` 已达到 `No issues found`，版本号和 Room schema 已完成发布配置；Release 签名与真机回归仍属于 Alpha 发布阻塞项，详见[首个 Alpha Release 计划](docs/releases/08_首个AlphaRelease计划.md)。
 
 ## 文档
 
@@ -67,7 +67,8 @@ Windows PowerShell：
 ├── README.md
 ├── CONTRIBUTING.md
 ├── SECURITY.md
-└── CHANGELOG.md
+├── CHANGELOG.md
+└── LICENSE
 ```
 
 `.idea/`、`.gradle/`、`.kotlin/`、`local.properties`、构建产物、签名文件和本地 AI 工具目录不会提交到仓库。
@@ -78,4 +79,4 @@ Windows PowerShell：
 
 ## 开源许可
 
-仓库尚未声明开源许可证。在许可证确定并加入 `LICENSE` 前，代码默认受版权保护；公开可见不等同于获得复制、修改或分发授权。
+本项目采用 [MIT License](LICENSE)。

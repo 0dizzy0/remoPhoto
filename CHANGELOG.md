@@ -17,7 +17,10 @@
 
 ### 发布准备
 
-- 首个 Alpha 的 Lint 门禁已通过；签名、版本号、Room schema 和真机回归仍待完成。
+- 首个 Alpha 版本更新为 `0.1.0-alpha.3`（`versionCode = 3`）。
+- 增加 MIT License。
+- 配置并归档 Room v4 schema，构建不再报告缺少 `schemaLocation`。
+- 首个 Alpha 的 Lint 门禁已通过；签名和真机回归仍待完成。
 
 ## 发布历史
 
