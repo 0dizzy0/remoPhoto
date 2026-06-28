@@ -88,16 +88,16 @@ class HttpServerForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when {
-            intent?.action == ACTION_STOP -> {
-                stopServer()
-            }
-            else -> {
-                val port = intent?.getIntExtra(EXTRA_PORT, 8080) ?: 8080
-                val deviceName = intent?.getStringExtra(EXTRA_DEVICE_NAME) ?: ""
-                startServer(port, deviceName)
-            }
+        if (intent?.action == ACTION_STOP) {
+            stopServer()
+            unregisterRecoveryCallbacks()
+            stopSelf(startId)
+            return START_NOT_STICKY
         }
+
+        val port = intent?.getIntExtra(EXTRA_PORT, 8080) ?: 8080
+        val deviceName = intent?.getStringExtra(EXTRA_DEVICE_NAME) ?: ""
+        startServer(port, deviceName)
         return START_REDELIVER_INTENT
     }
 

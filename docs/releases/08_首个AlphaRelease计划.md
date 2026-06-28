@@ -19,14 +19,14 @@
 | --- | --- | --- |
 | Debug 构建 | `:app:assembleDebug` 通过 | 达标 |
 | Release 构建 | `:app:assembleRelease` 通过 | 基本达标 |
-| Release 产物 | `app-release.apk`，v2 签名验证通过 | 签名达标，待真机安装回归 |
-| JVM 单元测试 | 6 个用例通过 | 可作为 alpha 起点，但覆盖不足 |
+| Release 产物 | `app-release.apk`，v2 签名与 Android 12 全新安装通过 | 覆盖安装缺少同签名旧版基线 |
+| JVM 单元测试 | 8 个用例通过 | 可作为 alpha 起点，但覆盖仍较薄 |
 | Android 仪器/Compose 测试 | 暂无 | 不阻塞 alpha，但需要列入后续 |
 | Lint | 2026-06-27：`No issues found` | 达标；含 2 项局部、带原因的例外 |
 | Room 数据库 | 当前版本 v4，schema 已导出，迁移链 1->2->3->4 存在 | schema 达标，自动迁移测试后续补充 |
 | 远程仓库 | 已有多轮真机验证和大仓库优化 | 可纳入 alpha，但需列已知限制 |
 | 扫描大仓库 | 已引入 WorkManager、Spool、事务切换 | 可纳入 alpha，需保守说明 |
-| 发布文档 | 已有计划、检查清单和测试记录模板 | 模板达标，发布前仍需填写实际结果 |
+| 发布文档 | 已有计划、检查清单、Release Notes 草稿和一轮真机记录 | 待修复 REL-007 并补两设备远程结果 |
 | Git 状态 | 发布相关改动已分提交；仍有明确排除的本地改动 | 发布 tag 前需确认或清理剩余改动 |
 | GitHub 基础文档 | README、贡献、安全、更新日志和模板已补齐 | 基本达标 |
 | 开源许可证 | MIT License | 许可证选择已完成 |
@@ -361,20 +361,20 @@ Get-FileHash app\build\outputs\apk\release\<signed-apk-name>.apk -Algorithm SHA2
 - [x] `:app:assembleRelease` 通过。
 - [x] Room schema 导出问题已处理或明确记录。
 - [ ] 真机覆盖安装成功。
-- [ ] 冷启动无崩溃。
-- [ ] 本地仓库扫描可用。
-- [ ] 小型合成数据的分页边界可用。
-- [ ] 相册查找可用。
-- [ ] 全屏浏览可用。
-- [ ] 设置页切换导航可用。
-- [ ] 远程服务可启动。
+- [x] 冷启动无崩溃。
+- [x] 本地仓库扫描可用。
+- [x] 小型合成数据的分页边界可用。
+- [x] 相册查找可用。
+- [x] 基本全屏浏览可用；多图翻页仍待补测。
+- [x] 设置页切换导航可用。
+- [x] 远程服务启动、关闭和重新开启生命周期可用。
 - [ ] 远程仓库可添加。
 - [ ] 远程仓库分页可用。
 - [ ] 网络断开和恢复表现符合预期。
-- [ ] 数据库导出可用。
-- [ ] 导入流程至少完成基本校验。
-- [ ] crash buffer 无新增崩溃。
-- [ ] AppLogger 没有正常流程下的大量隐私路径泄漏。
+- [x] 数据库导出可用。
+- [x] 导入流程已完成有效备份和损坏 ZIP 基本校验。
+- [x] crash buffer 无新增崩溃。
+- [x] AppLogger 隐私抽查通过；文件名、相册/仓库实体、路径、URI、IP 和设备别名已脱敏。
 - [ ] Git 工作区干净。
 - [ ] 已创建 tag。
 - [ ] release notes 已写明 Alpha 和已知限制。
@@ -395,8 +395,8 @@ Get-FileHash app\build\outputs\apk\release\<signed-apk-name>.apk -Algorithm SHA2
 
 当前项目已经具备首个 Alpha 的功能基础，但不建议立即发包。建议先完成以下最小集合：
 
-1. 离线备份 Release keystore，并整理剩余 Git 工作区改动。
-2. 补一次 signed APK 手工 smoke test 记录。
-3. 写 release notes。
+1. 使用第二台设备完成远程发现、添加、分页、离线和恢复。
+2. 明确没有同签名旧版迁移基线的发布处理方式。
+3. 离线备份 Release keystore，补齐最终 release notes 并整理 Git 工作区。
 
 完成后即可作为个人开源项目的首个 Alpha 发布；其余测试体系、日志策略和安全边界可以在 Alpha 发布后的短周期迭代中继续增强。

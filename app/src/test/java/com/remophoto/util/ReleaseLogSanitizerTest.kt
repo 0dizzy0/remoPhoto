@@ -38,6 +38,36 @@ class ReleaseLogSanitizerTest {
     }
 
     @Test
+    fun `redacts unquoted and quoted file names`() {
+        val sanitized = ReleaseLogSanitizer.sanitize(
+            "封面已设置: fileName=Family Trip 2025.jpg, images=3, " +
+                "fallback filename='private.png'"
+        )
+
+        assertFalse(sanitized.contains("Family Trip 2025.jpg"))
+        assertFalse(sanitized.contains("private.png"))
+        assertTrue(sanitized.contains("fileName=<redacted>"))
+        assertTrue(sanitized.contains("filename=<redacted>"))
+        assertTrue(sanitized.contains("images=3"))
+    }
+
+    @Test
+    fun `redacts album repository and device labels`() {
+        val sanitized = ReleaseLogSanitizer.sanitize(
+            "album=\"primary:Pictures/Family Album\", " +
+                "repository=Private Library, device=Living Room, repoId=3"
+        )
+
+        assertFalse(sanitized.contains("Family Album"))
+        assertFalse(sanitized.contains("Private Library"))
+        assertFalse(sanitized.contains("Living Room"))
+        assertTrue(sanitized.contains("album=<redacted>"))
+        assertTrue(sanitized.contains("repository=<redacted>"))
+        assertTrue(sanitized.contains("device=<redacted>"))
+        assertTrue(sanitized.contains("repoId=3"))
+    }
+
+    @Test
     fun `keeps operational counters for diagnostics`() {
         val sanitized = ReleaseLogSanitizer.sanitize(
             "扫描索引完成: images=267995, elapsedMs=4200, repoId=3"
