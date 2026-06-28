@@ -351,6 +351,14 @@ fun FullScreenViewer(
                 if (image != null) {
                     ZoomableImage(
                         image = image,
+                        imageLoader = if (
+                            image.filePath.startsWith("http://") ||
+                            image.filePath.startsWith("https://")
+                        ) {
+                            app.dependencyContainer.remoteImageLoader
+                        } else {
+                            app.dependencyContainer.imageLoader
+                        },
                         scale = if (page == currentIndex) scale else 1f,
                         onScaleChange = { viewModel.setScale(it) },
                         onDoubleTap = { viewModel.toggleZoom() },

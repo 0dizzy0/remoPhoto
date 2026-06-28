@@ -17,6 +17,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
+import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.remophoto.domain.model.ImageItem
@@ -43,6 +44,7 @@ import android.os.SystemClock
 @Composable
 fun ZoomableImage(
     image: ImageItem,
+    imageLoader: ImageLoader,
     scale: Float,
     onScaleChange: (Float) -> Unit,
     onDoubleTap: () -> Unit,
@@ -208,6 +210,7 @@ fun ZoomableImage(
                 .crossfade(false)
                 .size(2048)
                 .build(),
+            imageLoader = imageLoader,
             contentDescription = image.fileName,
             modifier = Modifier
                 .fillMaxSize()

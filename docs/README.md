@@ -52,6 +52,7 @@ docs/
 | [图标设计预览](design/icon-r-preview.html) | 应用图标的设计预览 |
 | [测试执行记录模板](testing/测试执行记录模板.md) | 每轮回归复制使用，保留环境、结果和日志证据 |
 | [0.1.0-alpha.3 真机核心回归](testing/2026-06-28_0.1.0-alpha.3_真机核心回归.md) | vivo Android 12 的本地、单设备远程 API、备份和日志隐私执行结果 |
+| [0.1.0-alpha.3 双机远程回归](testing/2026-06-28_0.1.0-alpha.3_双机远程回归.md) | mDNS、远程同步、263 页分页、图片缓存、分类、离线和恢复结果 |
 | [Alpha 发布检查清单](releases/Alpha发布检查清单.md) | 发版时复制使用，不替代发布计划 |
 | [v0.1.0-alpha.3 Release Notes](releases/v0.1.0-alpha.3.md) | 首个公开 Alpha 的发布说明草稿，真机回归后补齐最终信息 |
 

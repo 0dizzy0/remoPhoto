@@ -68,6 +68,23 @@ class ReleaseLogSanitizerTest {
     }
 
     @Test
+    fun `redacts category labels and keeps category counters`() {
+        val sanitized = ReleaseLogSanitizer.sanitize(
+            "categoryName=Family Trips, category=\"Private Collection\"(id=2), " +
+                "分类“Weekend Photos”，匹配相册=1, elapsedMs=42"
+        )
+
+        assertFalse(sanitized.contains("Family Trips"))
+        assertFalse(sanitized.contains("Private Collection"))
+        assertFalse(sanitized.contains("Weekend Photos"))
+        assertTrue(sanitized.contains("categoryName=<redacted>"))
+        assertTrue(sanitized.contains("category=<redacted>"))
+        assertTrue(sanitized.contains("分类 \"<redacted>\""))
+        assertTrue(sanitized.contains("匹配相册=1"))
+        assertTrue(sanitized.contains("elapsedMs=42"))
+    }
+
+    @Test
     fun `keeps operational counters for diagnostics`() {
         val sanitized = ReleaseLogSanitizer.sanitize(
             "扫描索引完成: images=267995, elapsedMs=4200, repoId=3"

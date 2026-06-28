@@ -294,8 +294,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 val context = getApplication<RemoPhotoApp>()
                 val thumbDir = context.cacheDir.resolve("remote_thumb_cache")
                 val imageDir = context.cacheDir.resolve("remote_image_cache")
-                _remoteThumbCacheSize.value = formatFileSize(dirSize(thumbDir))
-                _remoteImageCacheSize.value = formatFileSize(dirSize(imageDir))
+                _remoteThumbCacheSize.value = formatFileSize(remoteCachePayloadSize(thumbDir))
+                _remoteImageCacheSize.value = formatFileSize(remoteCachePayloadSize(imageDir))
                 AppLogger.i(TAG, "远程缓存统计完成: thumb=${_remoteThumbCacheSize.value}, image=${_remoteImageCacheSize.value}")
             } catch (e: Exception) {
                 _remoteThumbCacheSize.value = "读取失败"
@@ -320,10 +320,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 AppLogger.e(TAG, "清除远程缓存失败", e)
             }
         }
-    }
-
-    private fun dirSize(dir: java.io.File): Long {
-        return if (dir.isDirectory) dir.walkTopDown().filter { it.isFile }.sumOf { it.length() } else 0L
     }
 
     private fun formatFileSize(bytes: Long): String {
@@ -364,4 +360,15 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     companion object {
         private const val TAG = "SettingsVM"
     }
+}
+
+/**
+ * Coil 的 DiskLruCache 会在清空条目后保留 journal 索引文件。
+ * 设置页只统计可清理的缓存条目，避免清理成功后仍显示少量占用。
+ */
+internal fun remoteCachePayloadSize(dir: java.io.File): Long {
+    if (!dir.isDirectory) return 0L
+    return dir.walkTopDown()
+        .filter { it.isFile && !it.name.startsWith("journal") }
+        .sumOf { it.length() }
 }
