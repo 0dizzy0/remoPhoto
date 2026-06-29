@@ -376,8 +376,8 @@ Get-FileHash app\build\outputs\apk\release\<signed-apk-name>.apk -Algorithm SHA2
 - [x] crash buffer 无新增崩溃。
 - [x] AppLogger 隐私抽查通过；文件名、相册/仓库/分类实体、路径、URI、IP 和设备别名已脱敏。
 - [x] Release keystore 已由项目所有者确认完成独立介质备份。
-- [ ] Git 工作区干净。
-- [ ] 已创建 tag。
+- [x] Git 工作区干净。
+- [x] 已创建 tag。
 - [x] release notes 已写明 Alpha、迁移策略和已知限制。
 
 ## 9. Alpha 后第一轮迭代建议
