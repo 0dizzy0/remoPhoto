@@ -379,6 +379,7 @@ Get-FileHash app\build\outputs\apk\release\<signed-apk-name>.apk -Algorithm SHA2
 - [x] Git 工作区干净。
 - [x] 已创建 tag。
 - [x] release notes 已写明 Alpha、迁移策略和已知限制。
+- [x] `master` 和 tag 已推送，GitHub prerelease、signed APK 和 SHA-256 已发布并复核。
 
 ## 9. Alpha 后第一轮迭代建议
 
@@ -402,4 +403,4 @@ Get-FileHash app\build\outputs\apk\release\<signed-apk-name>.apk -Algorithm SHA2
 2. 对最终候选重新执行本地发布门禁并核对 signed APK 的 SHA-256。
 3. 整理 Git 工作区并创建发布 Tag。
 
-完成后即可作为个人开源项目的首个 Alpha 发布；其余测试体系、日志策略和安全边界可以在 Alpha 发布后的短周期迭代中继续增强。
+上述事项已于 2026-06-29 完成，`v0.1.0-alpha.3` 已作为个人开源项目的首个公开 Alpha 发布。其余测试体系、日志策略和安全边界在 Alpha 发布后的短周期迭代中继续增强。
