@@ -2,6 +2,8 @@
 
 remoPhoto 是一款面向 Android 的本地与局域网相册管理应用。它以用户授权的文件目录作为图片仓库，按子目录建立相册索引，并提供分页、排序、分类、全屏浏览和可信局域网设备间共享能力。
 
+本项目使用 AI 辅助完成需求整理、方案分析、编码、测试、文档和发版工作；项目维护者负责范围决策、风险接受、真机环境和最终发布授权。AI 生成或修改的内容仍需通过 Git 审阅、构建、Lint、自动化测试和真机回归。~~这份 README 也有 AI 帮忙。~~
+
 > 首个公开 Alpha 版本为 `0.1.0-alpha.3`。构建、签名、真机核心回归和双机远程回归均已通过；该版本仅面向早期试用，不应视为稳定版本。
 
 ## 核心能力
@@ -70,6 +72,7 @@ CI 或其他开发环境也可以使用 `REMOPHOTO_RELEASE_STORE_FILE`、`REMOPH
 ## 文档
 
 - [文档中心](docs/README.md)
+- [AI 辅助开发说明](docs/project/AI辅助开发说明.md)
 - [项目状态](docs/project/项目状态.md)
 - [功能规格](docs/product/02_功能规格说明.md)
 - [技术方案](docs/architecture/03_技术方案概要.md)
@@ -101,6 +104,18 @@ CI 或其他开发环境也可以使用 `REMOPHOTO_RELEASE_STORE_FILE`、`REMOPH
 远程仓库当前使用明文 HTTP，仅用于受信任的同一局域网。不要在公共 Wi-Fi 或公网暴露远程服务。提交日志前请移除完整文件路径、相册名、设备 IP 等敏感信息。
 
 系统云备份和设备迁移不会自动复制应用数据库、设置或连接元信息；数据迁移应使用应用内导入导出。Release 构建关闭 Logcat 和 DEBUG 文件日志，并统一脱敏 URI、路径、IP 与用户自定义名称。
+
+## AI 辅助开发
+
+- 主要 AI 开发代理：OpenAI Codex。
+- 仓库级代理约束：`AGENTS.md`；`CLAUDE.md` 作为 Claude 兼容入口并复用同一约束。
+- 当前工作区 Skills：`mobile-android-design`、`find-skills`；本次 Alpha 发版还使用了 Codex GitHub 插件提供的 `github:github` 工作流 Skill。
+- Claude 本地工作区启用了 `chrisbanes-skills@chrisbanes-skills` 插件；该本地配置不随仓库发布。
+- 当前项目没有配置项目级 MCP Server，本次 Alpha 发版也没有通过 MCP 访问项目或用户数据。
+- Gradle、ADB、Git、GitHub CLI、`apksigner`、`aapt2`、WebSearch/WebFetch 属于构建、验证或检索工具，不等同于 Skill 或 MCP。
+- AI 配置、Skills 和缓存目录默认不进入版本控制，也不会打包进 APK；remoPhoto 本身不包含运行时 AI 功能，不会把用户图片发送给 AI 服务。
+
+完整清单、来源和边界见 [AI 辅助开发说明](docs/project/AI辅助开发说明.md)。
 
 ## 开源许可
 

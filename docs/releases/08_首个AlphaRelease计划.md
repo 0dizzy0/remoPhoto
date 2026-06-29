@@ -131,7 +131,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup-release-
 - `CLAUDE.md`
 - launcher icon 相关资源
 
-其中本地 AI 工具目录和 `skills-lock.json` 已由 `.gitignore` 排除；`docs/design/` 是明确的项目设计文档目录，可以纳入版本控制。`AGENTS.md`、`CLAUDE.md` 是否公开应按仓库协作策略逐项确认。
+其中本地 AI 工具目录和 `skills-lock.json` 已由 `.gitignore` 排除；`docs/design/` 是明确的项目设计文档目录，可以纳入版本控制。`AGENTS.md`、`CLAUDE.md` 已确认公开，作为仓库级 AI 协作约束；本地 AI 配置、缓存和凭据不公开。
 
 验收标准：
 
