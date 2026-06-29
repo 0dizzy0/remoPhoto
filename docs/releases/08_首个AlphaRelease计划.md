@@ -1,6 +1,6 @@
 # remoPhoto 首个 Alpha Release 计划
 
-更新时间：2026-06-28
+更新时间：2026-06-29
 
 ## 1. 发布目标
 
@@ -19,7 +19,7 @@
 | --- | --- | --- |
 | Debug 构建 | `:app:assembleDebug` 通过 | 达标 |
 | Release 构建 | `:app:assembleRelease` 通过 | 基本达标 |
-| Release 产物 | `app-release.apk`，v2 签名与 Android 12 全新安装通过 | 覆盖安装缺少同签名旧版基线 |
+| Release 产物 | `app-release.apk`，v2 签名、Android 12 全新安装和同签名候选覆盖安装通过 | `0.1.0-alpha.3` 作为首个公开签名升级基线 |
 | JVM 单元测试 | 10 个用例通过 | 可作为 alpha 起点，但覆盖仍较薄 |
 | Android 仪器/Compose 测试 | 暂无 | 不阻塞 alpha，但需要列入后续 |
 | Lint | 2026-06-27：`No issues found` | 达标；含 2 项局部、带原因的例外 |
@@ -360,7 +360,7 @@ Get-FileHash app\build\outputs\apk\release\<signed-apk-name>.apk -Algorithm SHA2
 - [x] `:app:lintDebug` 通过并输出 `No issues found`。
 - [x] `:app:assembleRelease` 通过。
 - [x] Room schema 导出问题已处理或明确记录。
-- [ ] 真机覆盖安装成功。
+- [x] 同签名候选包真机覆盖安装成功；签名不同的内部 Alpha 2 不属于公开升级基线。
 - [x] 冷启动无崩溃。
 - [x] 本地仓库扫描可用。
 - [x] 小型合成数据的分页边界可用。
@@ -375,9 +375,10 @@ Get-FileHash app\build\outputs\apk\release\<signed-apk-name>.apk -Algorithm SHA2
 - [x] 导入流程已完成有效备份和损坏 ZIP 基本校验。
 - [x] crash buffer 无新增崩溃。
 - [x] AppLogger 隐私抽查通过；文件名、相册/仓库/分类实体、路径、URI、IP 和设备别名已脱敏。
+- [x] Release keystore 已由项目所有者确认完成独立介质备份。
 - [ ] Git 工作区干净。
 - [ ] 已创建 tag。
-- [ ] release notes 已写明 Alpha 和已知限制。
+- [x] release notes 已写明 Alpha、迁移策略和已知限制。
 
 ## 9. Alpha 后第一轮迭代建议
 
@@ -393,11 +394,12 @@ Get-FileHash app\build\outputs\apk\release\<signed-apk-name>.apk -Algorithm SHA2
 
 ## 10. 发布建议结论
 
-当前项目已经具备首个 Alpha 的功能基础，核心发布回归已通过。发包前还需完成以下发布整理：
+当前项目已经具备首个 Alpha 的功能基础，核心发布回归已通过。`0.1.0-alpha.3` 已确定为首个公开签名升级基线；签名不同的内部 Alpha 2 不承诺覆盖升级，保留数据时采用应用内导出、卸载、安装和导入流程。
 
-1. 明确没有同签名旧版迁移基线的发布处理方式。
-2. 离线备份 Release keystore。
-3. 审核并提交最终候选改动，补齐 release notes 的 Commit 和日期。
-4. 整理 Git 工作区并创建发布 Tag。
+发包前还需完成以下发布整理：
+
+1. 审核并提交最终发布文档。
+2. 对最终候选重新执行本地发布门禁并核对 signed APK 的 SHA-256。
+3. 整理 Git 工作区并创建发布 Tag。
 
 完成后即可作为个人开源项目的首个 Alpha 发布；其余测试体系、日志策略和安全边界可以在 Alpha 发布后的短周期迭代中继续增强。

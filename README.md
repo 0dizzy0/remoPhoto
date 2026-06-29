@@ -2,7 +2,7 @@
 
 remoPhoto 是一款面向 Android 的本地与局域网相册管理应用。它以用户授权的文件目录作为图片仓库，按子目录建立相册索引，并提供分页、排序、分类、全屏浏览和可信局域网设备间共享能力。
 
-> 当前处于首个 Alpha 发布准备阶段。源码配置版本为 `0.1.0-alpha.3`，尚未提供经过完整发布门禁验证的正式安装包。
+> 当前处于首个 Alpha 发布收尾阶段。源码配置版本为 `0.1.0-alpha.3`，构建、签名、真机核心回归和双机远程回归均已通过。
 
 ## 核心能力
 
@@ -43,7 +43,7 @@ Windows PowerShell：
 .\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleRelease --console=plain
 ```
 
-当前 `lintDebug` 已达到 `No issues found`，版本号、Room schema、本地 Release 签名和发布安全策略已完成配置；真机回归仍属于 Alpha 发布阻塞项，详见[首个 Alpha Release 计划](docs/releases/08_首个AlphaRelease计划.md)。
+当前 `lintDebug` 已达到 `No issues found`，版本号、Room schema、本地 Release 签名、发布安全策略、真机核心回归和双机远程回归均已完成，详见[首个 Alpha Release 计划](docs/releases/08_首个AlphaRelease计划.md)。
 
 ### 本地 Release 签名
 
@@ -55,6 +55,15 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup-release-
 ```
 
 脚本会在项目目录的 `.signing/` 中生成 PKCS12 keystore 和本地属性文件，不会输出密码，也不会覆盖已有密钥。该目录已被 Git 忽略，但必须离线备份；丢失密钥后将无法为同一应用签署后续升级。
+
+连接可移动存储后，可执行以下命令创建带文件名加密的 7z 备份并自动校验；密码由 7-Zip 交互读取，不会进入命令行或脚本日志：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\backup-release-signing.ps1 `
+  -DestinationDirectory "<可移动存储目录>"
+```
+
+部分外接 SSD 会被 Windows 识别为固定磁盘，此时确认目标确为独立外接介质后，可显式增加 `-AllowFixedDrive`。备份密码必须保存在本机之外；生成的归档和 `.sha256` 文件不得提交仓库。
 
 CI 或其他开发环境也可以使用 `REMOPHOTO_RELEASE_STORE_FILE`、`REMOPHOTO_RELEASE_STORE_PASSWORD`、`REMOPHOTO_RELEASE_KEY_ALIAS`、`REMOPHOTO_RELEASE_KEY_PASSWORD` 环境变量。
 
