@@ -20,7 +20,7 @@
 | Android Lint | `No issues found` |
 | Release 构建 | signed APK、v2 签名和版本校验通过 |
 | 真机回归 | `alpha.3` 本地/双机远程已通过；`alpha.4` migration、覆盖升级和备份恢复已通过 |
-| 当前重点 | 首次远程 CI、候选提交、Tag、prerelease 和线上附件复验 |
+| 当前重点 | 最终发布提交、Tag、prerelease 和线上附件复验 |
 
 ## 3. 精简原则
 
@@ -73,13 +73,13 @@
 
 ### 5.3 退出标准
 
-- [ ] 最小 CI 稳定通过。
+- [x] 最小 CI 稳定通过。
 - [x] 分页/排序/定位、备份输入边界和 Room v3→v4 migration 测试通过。
 - [x] 没有开放 P0。
 - [x] `alpha.3 → alpha.4` 覆盖升级和数据保留通过。
 - [x] signed APK、版本、签名、SHA-256、主力真机 Smoke Test 和 Release Notes 草稿齐全。
 
-当前唯一未完成项是 workflow 推送后的首次 GitHub Actions 远程运行，以及随后的提交、Tag、prerelease 和线上附件复验。执行证据见[`0.1.0-alpha.4` 候选回归记录](../testing/2026-07-02_0.1.0-alpha.4_候选回归.md)。
+GitHub Actions run `28589376860` 已通过。剩余发布项是最终发布提交、Tag、prerelease 和线上附件复验。执行证据见[`0.1.0-alpha.4` 候选回归记录](../testing/2026-07-02_0.1.0-alpha.4_候选回归.md)。
 
 ## 6. `0.1.0-beta.1` 计划
 

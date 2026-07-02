@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+暂无。
+
+## [0.1.0-alpha.4] - 2026-07-02
+
 ### 新增
 
 - 增加最小 GitHub Actions CI，对 push、Pull Request 和手动触发运行 JVM 测试、Android Lint 与 Debug 构建，并保留失败报告。
