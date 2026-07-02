@@ -74,7 +74,14 @@ object DatabaseExporter {
         }
     }
 
-    suspend fun importDatabase(context: Context, sourceUri: Uri): Boolean = withContext(Dispatchers.IO) {
+    suspend fun importDatabase(context: Context, sourceUri: Uri): Boolean =
+        importDatabase(context, sourceUri, ImportStageObserver.NONE)
+
+    internal suspend fun importDatabase(
+        context: Context,
+        sourceUri: Uri,
+        stageObserver: ImportStageObserver
+    ): Boolean = withContext(Dispatchers.IO) {
         val workDir = createWorkDir(context, "import")
         val stagedDir = File(workDir, "staged").apply { mkdirs() }
         val sourceFile = File(workDir, "source")
@@ -135,7 +142,9 @@ object DatabaseExporter {
             AppDatabase.closeInstance()
             databaseClosed = true
             replaceDatabase(context, importedDb)
+            notifyImportStage(stageObserver, ImportStage.DATABASE_REPLACED)
             restoreStagedSettings(stagedDir, targetSettings)
+            notifyImportStage(stageObserver, ImportStage.SETTINGS_RESTORED)
             val keyStoreManager = KeyStoreManager(context)
             validation.remoteConnectionIds.forEach(keyStoreManager::deleteCredential)
             AppLogger.i(TAG, "已清除 ${validation.remoteConnectionIds.size} 个导入连接的本机凭据别名")
@@ -220,6 +229,11 @@ object DatabaseExporter {
         target.parentFile?.mkdirs()
         staged.copyTo(target, overwrite = true)
         AppLogger.i(TAG, "DataStore 设置已恢复: ${target.length()} bytes")
+    }
+
+    private fun notifyImportStage(observer: ImportStageObserver, stage: ImportStage) {
+        AppLogger.d(TAG, "导入阶段完成: $stage")
+        observer.onStage(stage)
     }
 
     private fun rollback(
@@ -317,4 +331,17 @@ private data class ImportValidation(
 sealed class ExportEvent {
     data class Success(val message: String) : ExportEvent()
     data class Error(val message: String) : ExportEvent()
+}
+
+internal enum class ImportStage {
+    DATABASE_REPLACED,
+    SETTINGS_RESTORED
+}
+
+internal fun interface ImportStageObserver {
+    fun onStage(stage: ImportStage)
+
+    companion object {
+        val NONE = ImportStageObserver { }
+    }
 }

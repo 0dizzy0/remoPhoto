@@ -1,6 +1,6 @@
 # remoPhoto 文档中心
 
-更新时间：2026-07-02
+更新时间：2026-07-03
 
 ## 文档约定
 
@@ -57,10 +57,11 @@ docs/
 | [0.1.0-alpha.3 真机核心回归](testing/2026-06-28_0.1.0-alpha.3_真机核心回归.md) | vivo Android 12 的本地、单设备远程 API、备份和日志隐私执行结果 |
 | [0.1.0-alpha.3 双机远程回归](testing/2026-06-28_0.1.0-alpha.3_双机远程回归.md) | mDNS、远程同步、263 页分页、图片缓存、分类、离线和恢复结果 |
 | [0.1.0-alpha.4 候选回归](testing/2026-07-02_0.1.0-alpha.4_候选回归.md) | CI 本地门禁、19 条 JVM 测试、migration、覆盖升级和备份恢复结果 |
+| [Beta 准备：导入失败回滚](testing/2026-07-03_Beta准备_导入失败回滚.md) | 数据库替换和设置恢复后注入失败的真机回滚证据 |
 | [Alpha 发布检查清单](releases/Alpha发布检查清单.md) | 发版时复制使用，不替代发布计划 |
 | [v0.1.0-alpha.3 发布检查记录](releases/v0.1.0-alpha.3_发布检查记录.md) | 首个公开 Alpha 的一次性门禁与发布执行记录 |
 | [v0.1.0-alpha.3 Release Notes](releases/v0.1.0-alpha.3.md) | 首个公开 Alpha 的功能、验证范围、安装方式和已知限制 |
-| [v0.1.0-alpha.4 Release Notes 草稿](releases/v0.1.0-alpha.4.md) | 下一 Alpha 的候选变更、验证证据和发布前剩余项 |
+| [v0.1.0-alpha.4 Release Notes](releases/v0.1.0-alpha.4.md) | 已发布 Alpha 的变更、验证证据和已知限制 |
 | [Beta 与正式版 Release 计划](releases/09_Beta与正式版Release计划.md) | `alpha.4 → beta.1 → 0.1.0` 的精简任务、按需测试和发布检查 |
 
 ## 单一事实来源
