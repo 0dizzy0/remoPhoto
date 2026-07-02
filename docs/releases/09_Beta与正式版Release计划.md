@@ -12,15 +12,15 @@
 
 | 项目 | 状态 |
 | --- | --- |
-| 公开版本 | `0.1.0-alpha.3`，`versionCode = 3` |
-| 开发候选 | `0.1.0-alpha.4`，`versionCode = 4`；尚未 Tag/发布 |
-| Git Tag / 渠道 | `v0.1.0-alpha.3` / GitHub prerelease |
+| 公开版本 | `0.1.0-alpha.4`，`versionCode = 4` |
+| 开发候选 | `0.1.0-beta.1`，尚未开始 |
+| Git Tag / 渠道 | `v0.1.0-alpha.4` / GitHub prerelease |
 | Release 签名 | 已建立首个公开升级基线，密钥已独立备份 |
-| JVM 测试 | `alpha.4` 候选 19/19 通过 |
+| JVM 测试 | `alpha.4` 发布版本 19/19 通过 |
 | Android Lint | `No issues found` |
 | Release 构建 | signed APK、v2 签名和版本校验通过 |
 | 真机回归 | `alpha.3` 本地/双机远程已通过；`alpha.4` migration、覆盖升级和备份恢复已通过 |
-| 当前重点 | 最终发布提交、Tag、prerelease 和线上附件复验 |
+| 当前重点 | 收集 `alpha.4` 反馈，冻结 Beta 范围 |
 
 ## 3. 精简原则
 
@@ -79,7 +79,7 @@
 - [x] `alpha.3 → alpha.4` 覆盖升级和数据保留通过。
 - [x] signed APK、版本、签名、SHA-256、主力真机 Smoke Test 和 Release Notes 草稿齐全。
 
-GitHub Actions run `28589376860` 已通过。剩余发布项是最终发布提交、Tag、prerelease 和线上附件复验。执行证据见[`0.1.0-alpha.4` 候选回归记录](../testing/2026-07-02_0.1.0-alpha.4_候选回归.md)。
+最终提交 `1b078f9` 的 GitHub Actions run `28589851108` 已通过；Tag、prerelease 和线上附件复验均已完成。最终 APK SHA-256 为 `2b4d2b2fb6fa3756f1d406d63e42eaf9e7595dca86d980b696cc01b2e47c52d7`。执行证据见[`0.1.0-alpha.4` 候选回归记录](../testing/2026-07-02_0.1.0-alpha.4_候选回归.md)。
 
 ## 6. `0.1.0-beta.1` 计划
 
