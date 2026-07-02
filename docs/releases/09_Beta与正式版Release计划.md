@@ -13,14 +13,14 @@
 | 项目 | 状态 |
 | --- | --- |
 | 公开版本 | `0.1.0-alpha.4`，`versionCode = 4` |
-| 开发候选 | `0.1.0-beta.1`，尚未开始 |
+| 开发候选 | `0.1.0-beta.1`，`versionCode = 5`，验证中 |
 | Git Tag / 渠道 | `v0.1.0-alpha.4` / GitHub prerelease |
 | Release 签名 | 已建立首个公开升级基线，密钥已独立备份 |
 | JVM 测试 | `alpha.4` 发布版本 19/19 通过 |
 | Android Lint | `No issues found` |
 | Release 构建 | signed APK、v2 签名和版本校验通过 |
 | 真机回归 | `alpha.3` 本地/双机远程已通过；`alpha.4` migration、覆盖升级和备份恢复已通过 |
-| 当前重点 | 收集 `alpha.4` 反馈，冻结 Beta 范围 |
+| 当前重点 | 验证 `beta.1` 覆盖升级、备份、主力真机、双机远程和日志隐私 |
 
 ## 3. 精简原则
 
@@ -88,18 +88,20 @@
 Beta 发布前必须完成：
 
 - [ ] `alpha.4` 的必须项全部完成。
-- [ ] CI、Lint、JVM 测试和 signed Release 构建通过。
-- [ ] 最小 Room v3→v4 migration 可重复验证。
-- [ ] 有效备份恢复、非法输入拒绝通过；失败回滚至少有一次可重复证据或明确接受的残留风险。
-- [ ] `alpha.3 → beta.1` 或上一公开 Alpha → `beta.1` 覆盖升级后数据可用。
+- [x] CI、Lint、JVM 测试和 signed Release 构建通过。
+- [x] 最小 Room v3→v4 migration 可重复验证。
+- [x] 有效备份恢复、非法输入拒绝通过；失败回滚至少有一次可重复证据或明确接受的残留风险。
+- [x] `alpha.3 → beta.1` 或上一公开 Alpha → `beta.1` 覆盖升级后数据可用。
 - [ ] 两台真机完成发现、连接、分页、图片、缓存、离线和恢复回归。
-- [ ] Release 日志无 DEBUG、完整路径、URI、IP、设备名和用户自定义名称泄漏。
-- [ ] 主力真机完成本地核心、备份和冷启动回归。
+- [x] Release 日志无 DEBUG、完整路径、URI、IP、设备名和用户自定义名称泄漏。
+- [x] 主力真机完成本地核心、备份和冷启动回归。
 - [ ] README 和 Release Notes 明确安装、升级、校验与可信局域网限制。
 
 API 29、API 35/36 和 UI 自动化不是 Beta 的固定全量门禁；当 minSdk/targetSdk、前台服务、SAF 或导航行为变化时执行对应专项。正式版前至少对 minSdk 和最新目标环境各完成一次基础兼容检查。
 
 准备进度：2026-07-03 已完成 `TC-BKP-010` 可重复真机测试，在数据库替换和设置恢复后注入失败，原数据库、原设置、SQLite 完整性和临时目录清理均通过。Beta 候选形成后仍需执行上一公开版本覆盖升级和有效备份恢复。
+
+候选进度：2026-07-03 已将开发版本更新为 `0.1.0-beta.1`（`versionCode = 5`），冻结大功能并完成首轮主力真机验证。`alpha.4 → beta.1` 覆盖升级、有效备份恢复、2 图/2 相册 SAF 本地核心、Release 日志隐私、Room migration、导入失败回滚和 Crash buffer 均通过。当前只连接一台真机，双机远程仍是发布前未完成门禁；完成全部门禁前不创建 Tag 或 GitHub Release。
 
 ## 7. `0.1.0` 正式版计划
 

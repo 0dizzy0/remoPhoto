@@ -58,10 +58,12 @@ docs/
 | [0.1.0-alpha.3 双机远程回归](testing/2026-06-28_0.1.0-alpha.3_双机远程回归.md) | mDNS、远程同步、263 页分页、图片缓存、分类、离线和恢复结果 |
 | [0.1.0-alpha.4 候选回归](testing/2026-07-02_0.1.0-alpha.4_候选回归.md) | CI 本地门禁、19 条 JVM 测试、migration、覆盖升级和备份恢复结果 |
 | [Beta 准备：导入失败回滚](testing/2026-07-03_Beta准备_导入失败回滚.md) | 数据库替换和设置恢复后注入失败的真机回滚证据 |
+| [0.1.0-beta.1 候选首轮回归](testing/2026-07-03_0.1.0-beta.1_候选首轮回归.md) | 覆盖升级、有效备份、本地核心、日志隐私和 Android 集成测试结果 |
 | [Alpha 发布检查清单](releases/Alpha发布检查清单.md) | 发版时复制使用，不替代发布计划 |
 | [v0.1.0-alpha.3 发布检查记录](releases/v0.1.0-alpha.3_发布检查记录.md) | 首个公开 Alpha 的一次性门禁与发布执行记录 |
 | [v0.1.0-alpha.3 Release Notes](releases/v0.1.0-alpha.3.md) | 首个公开 Alpha 的功能、验证范围、安装方式和已知限制 |
 | [v0.1.0-alpha.4 Release Notes](releases/v0.1.0-alpha.4.md) | 已发布 Alpha 的变更、验证证据和已知限制 |
+| [v0.1.0-beta.1 Release Notes 草稿](releases/v0.1.0-beta.1.md) | 未发布 Beta 候选的范围、验证状态和已知限制 |
 | [Beta 与正式版 Release 计划](releases/09_Beta与正式版Release计划.md) | `alpha.4 → beta.1 → 0.1.0` 的精简任务、按需测试和发布检查 |
 
 ## 单一事实来源
