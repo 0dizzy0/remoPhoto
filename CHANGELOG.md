@@ -4,7 +4,25 @@
 
 ## [Unreleased]
 
-暂无。
+### 新增
+
+- 增加最小 GitHub Actions CI，对 push、Pull Request 和手动触发运行 JVM 测试、Android Lint 与 Debug 构建，并保留失败报告。
+- 增加相册分页边界、稳定排序、Unicode/空白名称和模糊定位 JVM 测试。
+- 增加备份 manifest/version、条目白名单、路径穿越、重复条目和损坏 ZIP JVM 测试。
+- 增加 Room v3→v4 真机 migration 测试，验证相册最近修改时间回填和最终 Room schema。
+
+### 变更
+
+- 开发版本更新为 `0.1.0-alpha.4`（`versionCode = 4`）。
+- 相册树排序提取为纯规则，并为同排序值增加确定性次级顺序。
+- 备份格式、ZIP 类型、条目白名单和路径安全规则提取为可测试的统一导入策略。
+- Debug 包使用 `com.remophoto.debug`，可与正式签名版本并存，避免调试安装破坏公开版本数据。
+
+### 文档
+
+- 增加适合个人小型项目的精简发布路线：保留签名、升级、备份、隐私和关键回归门禁，按变更风险决定双机、兼容性和 UI 专项测试。
+- 将默认版本路线收敛为 `alpha.4 → beta.1 → 0.1.0`，仅在出现高风险修复时增加额外 Beta 或 RC。
+- 增加 `alpha.4` 候选回归记录和 Release Notes 草稿。
 
 ## [0.1.0-alpha.3] - 2026-06-29
 
@@ -40,4 +58,6 @@
 
 ## 发布历史
 
-当前没有已确认的公开发布版本。阶段性实现与修复记录见[项目状态](docs/project/项目状态.md)和[Phase 4 归档](docs/archive/09_Phase4_性能优化与问题修复归档.md)。
+- `0.1.0-alpha.3`：2026-06-29 发布的首个公开 Alpha。
+
+阶段性实现与修复记录见[项目状态](docs/project/项目状态.md)和[Phase 4 归档](docs/archive/09_Phase4_性能优化与问题修复归档.md)。

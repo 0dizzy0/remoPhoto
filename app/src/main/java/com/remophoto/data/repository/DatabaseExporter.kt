@@ -18,26 +18,16 @@ import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.UUID
 import java.util.zip.ZipEntry
-import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import kotlin.system.exitProcess
 
 /** 一致性数据库备份及向下兼容导入。凭据位于 Keystore，永不进入备份。 */
 object DatabaseExporter {
     private const val TAG = "DatabaseExporter"
-    private const val DB_NAME = "remophoto.db"
-    private const val DATASTORE_FILE = "settings.preferences_pb"
-    private const val MANIFEST_FILE = "manifest.json"
+    private const val DB_NAME = BackupImportPolicy.DATABASE_FILE
+    private const val DATASTORE_FILE = BackupImportPolicy.DATASTORE_FILE
+    private const val MANIFEST_FILE = BackupImportPolicy.MANIFEST_FILE
     internal const val FORMAT_VERSION = 1
-
-    private val allowedZipEntries = setOf(
-        DB_NAME,
-        "$DB_NAME-wal",
-        "$DB_NAME-shm",
-        DATASTORE_FILE,
-        "settings/$DATASTORE_FILE",
-        MANIFEST_FILE
-    )
 
     private val _events = MutableSharedFlow<ExportEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<ExportEvent> = _events
@@ -97,17 +87,17 @@ object DatabaseExporter {
                 FileOutputStream(sourceFile).use(input::copyTo)
             } ?: return@withContext fail("无法打开导入源")
 
-            val sourceType = if (isZip(sourceFile)) "zip" else "raw_db"
-            if (sourceType == "zip") extractKnownEntries(sourceFile, stagedDir)
+            val sourceType = if (BackupImportPolicy.isZip(sourceFile)) "zip" else "raw_db"
+            if (sourceType == "zip") {
+                BackupImportPolicy.extractKnownEntries(sourceFile, stagedDir).forEach { entry ->
+                    AppLogger.d(TAG, "暂存导入项: ${entry.name} (${entry.size} bytes)")
+                }
+            }
             else sourceFile.copyTo(File(stagedDir, DB_NAME), overwrite = true)
 
             val importedDb = File(stagedDir, DB_NAME)
             if (!importedDb.exists()) return@withContext fail("备份中未找到 $DB_NAME")
             val manifest = readManifest(File(stagedDir, MANIFEST_FILE))
-            if (manifest != null && manifest.formatVersion > FORMAT_VERSION) {
-                return@withContext fail("备份格式较新，请先升级应用")
-            }
-
             val validation = validateAndNormalize(importedDb)
             AppLogger.i(
                 TAG,
@@ -121,8 +111,13 @@ object DatabaseExporter {
                     else "数据库版本无效"
                 )
             }
-            if (manifest != null && manifest.databaseVersion != validation.databaseVersion) {
-                return@withContext fail("manifest 与数据库版本不一致")
+            BackupImportPolicy.validateManifest(
+                manifest = manifest,
+                actualDatabaseVersion = validation.databaseVersion,
+                currentFormatVersion = FORMAT_VERSION,
+                currentDatabaseVersion = AppDatabase.SCHEMA_VERSION
+            )?.let { error ->
+                return@withContext fail(error)
             }
             AppLogger.i(
                 TAG,
@@ -197,28 +192,6 @@ object DatabaseExporter {
             ImportValidation(version, integrity, remoteCount, resetCount, remoteIds)
         } finally {
             db.close()
-        }
-    }
-
-    private fun extractKnownEntries(zipFile: File, destination: File) {
-        ZipInputStream(FileInputStream(zipFile).buffered()).use { zip ->
-            var entry = zip.nextEntry
-            while (entry != null) {
-                if (!entry.isDirectory) {
-                    val normalized = entry.name.replace('\\', '/')
-                    require(normalized in allowedZipEntries && !normalized.contains("..")) {
-                        "备份包含不允许的文件: ${entry.name}"
-                    }
-                    val output = File(destination, normalized)
-                    val root = destination.canonicalFile
-                    require(output.canonicalFile.toPath().startsWith(root.toPath())) { "检测到路径穿越" }
-                    output.parentFile?.mkdirs()
-                    FileOutputStream(output).use(zip::copyTo)
-                    AppLogger.d(TAG, "暂存导入项: $normalized (${output.length()} bytes)")
-                }
-                zip.closeEntry()
-                entry = zip.nextEntry
-            }
         }
     }
 
@@ -297,11 +270,6 @@ object DatabaseExporter {
 
     private fun readManifest(file: File): BackupManifest? =
         if (!file.exists()) null else BackupManifest.fromJson(JSONObject(file.readText(Charsets.UTF_8)))
-
-    private fun isZip(file: File): Boolean = FileInputStream(file).use { input ->
-        val signature = ByteArray(4)
-        input.read(signature) == 4 && signature.contentEquals(byteArrayOf(0x50, 0x4B, 0x03, 0x04))
-    }
 
     private fun createWorkDir(context: Context, prefix: String): File =
         File(context.cacheDir, "database-transfer/$prefix-${UUID.randomUUID()}").apply { mkdirs() }

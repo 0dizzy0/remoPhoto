@@ -455,7 +455,7 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
         val roots = allAlbums
             .filter { it.parentAlbumId == null || it.parentAlbumId !in ids }
             .map { buildNode(it, 0) }
-        val sorted = sortAlbumTree(roots, _sortOrder.value)
+        val sorted = AlbumListSorter.sortTree(roots, _sortOrder.value)
         AppLogger.i(
             TAG,
             "相册树构建完成: albums=${allAlbums.size}, roots=${sorted.size}, " +
@@ -477,29 +477,11 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
     private fun sortAlbums() {
         val current = _albumTree.value
         val order = _sortOrder.value
-        val sorted = sortAlbumTree(current, order)
+        val sorted = AlbumListSorter.sortTree(current, order)
         _albumTree.value = sorted
         viewModelScope.launch {
             recomputePagedAlbums()
             AppLogger.i(TAG, "相册列表已排序: ${order.displayName}, 相册数=${flatAlbums.size}")
-        }
-    }
-
-    private fun sortAlbumTree(albums: List<Album>, order: AlbumSortOrder): List<Album> {
-        val withSortedChildren = albums.map { album ->
-            album.copy(children = sortAlbumTree(album.children, order))
-        }
-        return when (order) {
-            AlbumSortOrder.NAME_ASC -> withSortedChildren.sortedBy { it.name.lowercase() }
-            AlbumSortOrder.NAME_DESC -> withSortedChildren.sortedByDescending { it.name.lowercase() }
-            AlbumSortOrder.MODIFIED_ASC -> withSortedChildren.sortedWith(
-                compareBy<Album> { it.lastModified }.thenBy { it.name.lowercase() }
-            )
-            AlbumSortOrder.MODIFIED_DESC -> withSortedChildren.sortedWith(
-                compareByDescending<Album> { it.lastModified }.thenBy { it.name.lowercase() }
-            )
-            AlbumSortOrder.IMAGE_COUNT_ASC -> withSortedChildren.sortedBy { it.imageCount }
-            AlbumSortOrder.IMAGE_COUNT_DESC -> withSortedChildren.sortedByDescending { it.imageCount }
         }
     }
 

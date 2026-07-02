@@ -78,6 +78,7 @@ CI 或其他开发环境也可以使用 `REMOPHOTO_RELEASE_STORE_FILE`、`REMOPH
 - [技术方案](docs/architecture/03_技术方案概要.md)
 - [测试用例](docs/testing/07_测试用例.md)
 - [Alpha 发布计划](docs/releases/08_首个AlphaRelease计划.md)
+- [Beta 与正式版发布计划](docs/releases/09_Beta与正式版Release计划.md)
 - [贡献指南](CONTRIBUTING.md)
 - [安全说明](SECURITY.md)
 
