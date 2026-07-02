@@ -16,10 +16,10 @@
 | 开发候选 | `0.1.0-beta.1`，`versionCode = 5`，验证中 |
 | Git Tag / 渠道 | `v0.1.0-alpha.4` / GitHub prerelease |
 | Release 签名 | 已建立首个公开升级基线，密钥已独立备份 |
-| JVM 测试 | `alpha.4` 发布版本 19/19 通过 |
+| JVM 测试 | `beta.1` 候选本地和 CI 19/19 通过 |
 | Android Lint | `No issues found` |
 | Release 构建 | signed APK、v2 签名和版本校验通过 |
-| 真机回归 | `alpha.3` 本地/双机远程已通过；`alpha.4` migration、覆盖升级和备份恢复已通过 |
+| 真机回归 | `beta.1` 主力真机首轮通过；双机远程待执行 |
 | 当前重点 | 验证 `beta.1` 覆盖升级、备份、主力真机、双机远程和日志隐私 |
 
 ## 3. 精简原则
