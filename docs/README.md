@@ -64,7 +64,7 @@ docs/
 | [v0.1.0-alpha.3 发布检查记录](releases/v0.1.0-alpha.3_发布检查记录.md) | 首个公开 Alpha 的一次性门禁与发布执行记录 |
 | [v0.1.0-alpha.3 Release Notes](releases/v0.1.0-alpha.3.md) | 首个公开 Alpha 的功能、验证范围、安装方式和已知限制 |
 | [v0.1.0-alpha.4 Release Notes](releases/v0.1.0-alpha.4.md) | 已发布 Alpha 的变更、验证证据和已知限制 |
-| [v0.1.0-beta.1 Release Notes 草稿](releases/v0.1.0-beta.1.md) | 未发布 Beta 候选的范围、验证状态和已知限制 |
+| [v0.1.0-beta.1 Release Notes](releases/v0.1.0-beta.1.md) | 已发布 Beta 的范围、验证证据、安装升级方式和已知限制 |
 | [Beta 与正式版 Release 计划](releases/09_Beta与正式版Release计划.md) | `alpha.4 → beta.1 → 0.1.0` 的精简任务、按需测试和发布检查 |
 
 ## 单一事实来源
