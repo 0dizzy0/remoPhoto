@@ -4,6 +4,7 @@ import com.remophoto.data.local.dao.AlbumDao
 import com.remophoto.data.local.dao.ImageDao
 import com.remophoto.data.local.entity.AlbumEntity
 import com.remophoto.data.local.entity.ImageEntity
+import com.remophoto.util.SafDisplayName
 import com.remophoto.util.Constants
 
 /**
@@ -95,7 +96,7 @@ class CreateAlbumsUseCase(
                 albumIdMap[parentPath]
             }
 
-            val dirName = dirPath.substringAfterLast('/').ifBlank { "未命名相册" }
+            val dirName = SafDisplayName.fromUriString(dirPath) ?: "未命名相册"
             val dirImages = imagesByDir[dirPath] ?: emptyList()
 
             val albumEntity = AlbumEntity(
@@ -150,7 +151,7 @@ class CreateAlbumsUseCase(
         }
 
         val albumEntity = AlbumEntity(
-            name = directoryPath.substringAfterLast('/').ifBlank { "未命名" },
+            name = SafDisplayName.fromUriString(directoryPath) ?: "未命名",
             directoryPath = directoryPath,
             repositoryId = repositoryId,
             parentAlbumId = parentAlbumId,

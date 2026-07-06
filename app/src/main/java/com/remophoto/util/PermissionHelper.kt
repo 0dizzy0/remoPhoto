@@ -27,6 +27,10 @@ import java.io.File
  */
 class PermissionHelper(private val activity: ComponentActivity) {
 
+    companion object {
+        private const val TAG = "PermissionHelper"
+    }
+
     /** SAF 目录选择器 launcher */
     private var directoryPickerLauncher: ActivityResultLauncher<Uri?>? = null
     private var onDirectorySelected: ((Uri) -> Unit)? = null
@@ -122,7 +126,28 @@ class PermissionHelper(private val activity: ComponentActivity) {
      * 获取 URI 对应的文件显示名称
      */
     fun getFileName(uri: Uri): String? {
-        return queryColumn(uri, OpenableColumns.DISPLAY_NAME)
+        val queryUri = try {
+            if (DocumentsContract.isTreeUri(uri)) {
+                DocumentsContract.buildDocumentUriUsingTree(
+                    uri,
+                    DocumentsContract.getTreeDocumentId(uri)
+                )
+            } else {
+                uri
+            }
+        } catch (_: Exception) {
+            uri
+        }
+
+        val queriedName = queryColumn(queryUri, OpenableColumns.DISPLAY_NAME)
+        if (!queriedName.isNullOrBlank()) return queriedName
+
+        AppLogger.w(
+            TAG,
+            "SAF 显示名查询失败，使用 URI 结构回退: authority=${uri.authority}, " +
+                "tree=${DocumentsContract.isTreeUri(uri)}"
+        )
+        return SafDisplayName.fromUriString(uri.toString())
     }
 
     /**

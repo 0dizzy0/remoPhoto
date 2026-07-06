@@ -6,6 +6,7 @@ import com.remophoto.data.local.dao.ImageDao
 import com.remophoto.data.local.dao.RepositoryDao
 import com.remophoto.data.local.entity.RepositoryEntity
 import com.remophoto.util.PermissionHelper
+import com.remophoto.util.SafDisplayName
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -54,20 +55,14 @@ class RepositoryManager(
             if (!docName.isNullOrBlank()) {
                 docName
             } else {
-                // 回退：从 URI 路径提取并 URL 解码
-                val rawName = uri.toString().substringAfterLast('/')
-                try {
-                    java.net.URLDecoder.decode(rawName, "UTF-8")
-                } catch (_: Exception) {
-                    rawName
-                }
+                SafDisplayName.fromUriString(uri.toString())
             }
         }
 
         val entity = RepositoryEntity(
             uriString = uri.toString(),
             path = path,
-            name = displayName.ifBlank { "未命名仓库" },
+            name = displayName?.ifBlank { "未命名仓库" } ?: "未命名仓库",
             addedTime = System.currentTimeMillis(),
             lastScanTime = 0,
             imageCount = 0

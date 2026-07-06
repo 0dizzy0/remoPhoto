@@ -11,6 +11,7 @@ import com.remophoto.data.local.entity.AlbumEntity
 import com.remophoto.data.scanner.FileScanner
 import com.remophoto.util.AppLogger
 import com.remophoto.util.Constants
+import com.remophoto.util.SafDisplayName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -165,19 +166,14 @@ class ScanImagesUseCase(
             rootUriString
         }
         albumPathMap[rootDocumentPath] = AlbumEntity(
-            name = Uri.decode(rootDocumentPath.substringAfterLast('/')).ifBlank { "根目录" },
+            name = SafDisplayName.fromUriString(rootDocumentPath) ?: "根目录",
             directoryPath = rootDocumentPath,
             repositoryId = repositoryId
         )
 
         for ((index, dirUri) in directories.withIndex()) {
             val dirPath = dirUri.toString()
-            val rawName = dirPath.substringAfterLast('/')
-            val dirName = try {
-                java.net.URLDecoder.decode(rawName, "UTF-8")
-            } catch (_: Exception) {
-                rawName
-            }.ifBlank { "相册 ${index + 1}" }
+            val dirName = SafDisplayName.fromUriString(dirPath) ?: "相册 ${index + 1}"
 
             val parentPath = dirPath.substringBeforeLast('/')
             val parentAlbumId: Long? = if (parentPath.isNotBlank() && parentPath != rootUriString) {
@@ -269,13 +265,7 @@ class ScanImagesUseCase(
 
         for ((index, dirUri) in directories.withIndex()) {
             val dirPath = dirUri.toString()
-            // URL 解码目录名（SAF URI 路径可能含 % 编码）
-            val rawName = dirPath.substringAfterLast('/')
-            val dirName = try {
-                java.net.URLDecoder.decode(rawName, "UTF-8")
-            } catch (_: Exception) {
-                rawName
-            }.ifBlank { "相册 ${index + 1}" }
+            val dirName = SafDisplayName.fromUriString(dirPath) ?: "相册 ${index + 1}"
 
             // 判断父目录
             val parentPath = dirPath.substringBeforeLast('/')

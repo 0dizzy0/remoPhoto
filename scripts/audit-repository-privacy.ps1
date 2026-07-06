@@ -80,7 +80,23 @@ try {
     ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
 
     foreach ($identity in $identityValues) {
+        if ([string]::IsNullOrWhiteSpace([string]$identity)) {
+            continue
+        }
+        # 仅匹配独立身份 token。避免本机用户名只是公开账号、链接或单词的一部分时误报，
+        # 例如本机用户名 alice 不应命中公开账号 0alice0。
+        $escapedIdentity = [regex]::Escape(([string]$identity).Trim())
+        if ([string]::IsNullOrWhiteSpace($escapedIdentity)) {
+            continue
+        }
+        $identityRegex = [regex]::new(
+            "(?<![A-Za-z0-9])$escapedIdentity(?![A-Za-z0-9])",
+            [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+        )
         foreach ($file in $trackedFiles) {
+            if ($file -eq "scripts/audit-repository-privacy.ps1") {
+                continue
+            }
             if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
                 continue
             }
@@ -88,7 +104,7 @@ try {
             try {
                 foreach ($line in Get-Content -LiteralPath $file -Encoding utf8 -ErrorAction Stop) {
                     $lineNumber++
-                    if ($line.IndexOf($identity, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                    if ($identityRegex.IsMatch([string]$line)) {
                         $blockingHits.Add([pscustomobject]@{
                             Category = "LOCAL_IDENTITY"
                             File = $file

@@ -4,7 +4,14 @@
 
 ## [Unreleased]
 
-暂无。
+### 修复
+
+- 修复 Android 10（API 29）DownloadsProvider 返回 `raw:` document ID 时，仓库名和相册名错误显示完整内部路径的问题。
+
+### 验证
+
+- 增加 5 条 SAF document ID 名称提取 JVM 测试；完整 JVM 测试增至 24 条。
+- 完成 API 29 模拟器全新安装、冷启动、SAF 授权、扫描、相册、图片和全屏浏览回归。
 
 ## [0.1.0-beta.1] - 2026-07-06
 
