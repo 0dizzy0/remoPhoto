@@ -12,15 +12,15 @@
 
 | 项目 | 状态 |
 | --- | --- |
-| 公开版本 | `0.1.0-beta.1`，`versionCode = 5` |
-| 开发候选 | `0.1.0`，`versionCode = 6`；本地 signed APK、一键 Smoke、基础日志隐私扫描、本地 SAF Smoke、双机远程 Smoke、备份导出日志隐私抽查和升级数据保留已通过 |
-| Git Tag / 渠道 | `v0.1.0-beta.1` / GitHub prerelease |
+| 公开版本 | `0.1.0`，`versionCode = 6` |
+| 开发候选 | 无；下一步观察正式版反馈 |
+| Git Tag / 渠道 | `v0.1.0` / GitHub Release |
 | Release 签名 | 已建立首个公开升级基线，密钥已独立备份 |
 | JVM 测试 | `beta.1` 候选本地和 CI 19/19 通过 |
 | Android Lint | `No issues found` |
 | Release 构建 | signed APK、v2 签名和版本校验通过 |
 | 真机回归 | `beta.1` 主力真机和 Android 16/12 双机远程回归均通过 |
-| 当前重点 | 补齐正式版剩余门禁：CI、Tag、Release 和线上附件复验 |
+| 当前重点 | 观察正式版反馈；如需 `0.1.1`，复用本计划门禁 |
 
 ## 3. 精简原则
 

@@ -2,7 +2,7 @@
 
 更新时间：2026-07-08
 
-> 当前公开版本为 `0.1.0-beta.1`；当前开发候选为 `0.1.0`（`versionCode = 6`）。7 月 8 日最新 signed APK SHA-256 为 `aa3a392eb1085008be9a16260419b80b18fd3326683eb179f399300d78c56eb1`，已通过一键 Smoke、JVM、Lint、Release 构建、3/3 Android 集成测试、应用内备份导出 Release 日志隐私抽查和 `beta.1 -> 0.1.0` 数据保留验证；正式发布前仍需补齐 CI、Tag、Release 和线上附件复验。
+> 当前公开版本为 `0.1.0`。APK SHA-256 为 `aa3a392eb1085008be9a16260419b80b18fd3326683eb179f399300d78c56eb1`；本地门禁、双机远程、备份恢复、Release 日志隐私、`beta.1 -> 0.1.0` 数据保留、CI 和线上附件 hash/签名/版本复验均已通过。
 
 ## 文档约定
 
@@ -73,7 +73,8 @@ docs/
 | [v0.1.0-alpha.3 Release Notes](releases/v0.1.0-alpha.3.md) | 首个公开 Alpha 的功能、验证范围、安装方式和已知限制 |
 | [v0.1.0-alpha.4 Release Notes](releases/v0.1.0-alpha.4.md) | 已发布 Alpha 的变更、验证证据和已知限制 |
 | [v0.1.0-beta.1 Release Notes](releases/v0.1.0-beta.1.md) | 已发布 Beta 的范围、验证证据、安装升级方式和已知限制 |
-| [v0.1.0 Release Notes](releases/v0.1.0.md) | 正式版候选的范围、候选验证结果和剩余发布门禁 |
+| [v0.1.0 Release Notes](releases/v0.1.0.md) | 正式版范围、验证结果和安装升级说明 |
+| [v0.1.0 发布检查记录](releases/v0.1.0_发布检查记录.md) | 正式版发布执行、线上附件复验和残留设备重装结果 |
 | [Beta 与正式版 Release 计划](releases/09_Beta与正式版Release计划.md) | `alpha.4 → beta.1 → 0.1.0` 的精简任务、按需测试和发布检查 |
 
 ## 单一事实来源
