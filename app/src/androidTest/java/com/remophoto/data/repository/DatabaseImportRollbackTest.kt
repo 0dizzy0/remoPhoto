@@ -12,6 +12,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -121,6 +122,48 @@ class DatabaseImportRollbackTest {
             restored.categoryDao().getCategoryById(originalId)?.name
         )
         assertEquals(ORIGINAL_SETTINGS, settingsFile.readText(Charsets.UTF_8))
+        restored.openHelper.writableDatabase.query("PRAGMA integrity_check").use { cursor ->
+            cursor.moveToFirst()
+            assertEquals("ok", cursor.getString(0))
+        }
+        assertFalse(
+            transferRoot().listFiles().orEmpty().any { it.name.startsWith("import-") }
+        )
+    }
+
+    @Test
+    fun successfulImportRestoresDatabaseAndSettings() = runBlocking {
+        val database = AppDatabase.getInstance(context)
+        val originalId = database.categoryDao().insert(
+            CategoryEntity(name = ORIGINAL_CATEGORY, color = 0x112233)
+        )
+        settingsFile.parentFile?.mkdirs()
+        settingsFile.writeText(ORIGINAL_SETTINGS, Charsets.UTF_8)
+
+        val importedDatabase = importedDatabaseFile()
+        val backupZip = backupZipFile()
+        createImportedDatabase(database, importedDatabase, originalId)
+        createBackupZip(importedDatabase, backupZip)
+        val observedStages = mutableListOf<ImportStage>()
+
+        val result = DatabaseExporter.importDatabase(
+            context = context,
+            sourceUri = Uri.fromFile(backupZip),
+            stageObserver = ImportStageObserver { stage -> observedStages += stage },
+            restartProcess = false
+        )
+
+        assertTrue(result)
+        assertEquals(
+            listOf(ImportStage.DATABASE_REPLACED, ImportStage.SETTINGS_RESTORED),
+            observedStages
+        )
+        val restored = AppDatabase.getInstance(context)
+        assertEquals(
+            IMPORTED_CATEGORY,
+            restored.categoryDao().getCategoryById(originalId)?.name
+        )
+        assertEquals(IMPORTED_SETTINGS, settingsFile.readText(Charsets.UTF_8))
         restored.openHelper.writableDatabase.query("PRAGMA integrity_check").use { cursor ->
             cursor.moveToFirst()
             assertEquals("ok", cursor.getString(0))

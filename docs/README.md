@@ -1,6 +1,8 @@
 # remoPhoto 文档中心
 
-更新时间：2026-07-06
+更新时间：2026-07-08
+
+> 当前公开版本为 `0.1.0-beta.1`；当前开发候选为 `0.1.0`（`versionCode = 6`）。7 月 8 日最新 signed APK SHA-256 为 `aa3a392eb1085008be9a16260419b80b18fd3326683eb179f399300d78c56eb1`，已通过一键 Smoke、JVM、Lint、Release 构建、3/3 Android 集成测试、应用内备份导出 Release 日志隐私抽查和 `beta.1 -> 0.1.0` 数据保留验证；正式发布前仍需补齐 CI、Tag、Release 和线上附件复验。
 
 ## 文档约定
 
@@ -61,11 +63,17 @@ docs/
 | [0.1.0-beta.1 候选首轮回归](testing/2026-07-03_0.1.0-beta.1_候选首轮回归.md) | 覆盖升级、有效备份、本地核心、日志隐私和 Android 集成测试结果 |
 | [0.1.0-beta.1 双机远程回归](testing/2026-07-06_0.1.0-beta.1_双机远程回归.md) | Android 12/16 双机发现、5249 相册、263 页、图片缓存、离线恢复和日志隐私结果 |
 | [0.1.0 API 29 兼容回归](testing/2026-07-06_0.1.0_API29兼容回归.md) | Android 10 最低系统安装、SAF 本地浏览、REL-012 复现与修复复测 |
+| [0.1.0 候选基础 Smoke](testing/2026-07-07_0.1.0_候选基础Smoke.md) | 正式版候选本地自动门禁、一键 Smoke、基础日志隐私扫描和 Android 集成测试结果 |
+| [0.1.0 候选本地 SAF Smoke](testing/2026-07-07_0.1.0_候选本地SAFSmoke.md) | 主力真机本地 SAF 授权、扫描、相册、图片网格、全屏和日志隐私结果 |
+| [0.1.0 候选双机远程 Smoke](testing/2026-07-07_0.1.0_候选双机远程Smoke.md) | 两台真机远程服务、mDNS 发现、远程同步、图片浏览、离线恢复和日志隐私结果 |
+| [0.1.0 候选备份恢复自动化](testing/2026-07-08_0.1.0_候选备份恢复自动化.md) | 有效备份恢复、导入失败回滚、Room migration 和应用内备份导出日志隐私结果 |
+| [0.1.0 候选升级数据保留](testing/2026-07-08_0.1.0_候选升级数据保留.md) | `0.1.0-beta.1 -> 0.1.0` 同签名覆盖升级和数据保留结果 |
 | [Alpha 发布检查清单](releases/Alpha发布检查清单.md) | 发版时复制使用，不替代发布计划 |
 | [v0.1.0-alpha.3 发布检查记录](releases/v0.1.0-alpha.3_发布检查记录.md) | 首个公开 Alpha 的一次性门禁与发布执行记录 |
 | [v0.1.0-alpha.3 Release Notes](releases/v0.1.0-alpha.3.md) | 首个公开 Alpha 的功能、验证范围、安装方式和已知限制 |
 | [v0.1.0-alpha.4 Release Notes](releases/v0.1.0-alpha.4.md) | 已发布 Alpha 的变更、验证证据和已知限制 |
 | [v0.1.0-beta.1 Release Notes](releases/v0.1.0-beta.1.md) | 已发布 Beta 的范围、验证证据、安装升级方式和已知限制 |
+| [v0.1.0 Release Notes](releases/v0.1.0.md) | 正式版候选的范围、候选验证结果和剩余发布门禁 |
 | [Beta 与正式版 Release 计划](releases/09_Beta与正式版Release计划.md) | `alpha.4 → beta.1 → 0.1.0` 的精简任务、按需测试和发布检查 |
 
 ## 单一事实来源

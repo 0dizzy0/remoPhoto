@@ -1,6 +1,6 @@
 # remoPhoto Beta 与正式版 Release 计划
 
-更新时间：2026-07-06
+更新时间：2026-07-07
 
 ## 1. 文档目标
 
@@ -13,14 +13,14 @@
 | 项目 | 状态 |
 | --- | --- |
 | 公开版本 | `0.1.0-beta.1`，`versionCode = 5` |
-| 开发候选 | 暂无；下一目标为 `0.1.0` |
+| 开发候选 | `0.1.0`，`versionCode = 6`；本地 signed APK、一键 Smoke、基础日志隐私扫描、本地 SAF Smoke、双机远程 Smoke、备份导出日志隐私抽查和升级数据保留已通过 |
 | Git Tag / 渠道 | `v0.1.0-beta.1` / GitHub prerelease |
 | Release 签名 | 已建立首个公开升级基线，密钥已独立备份 |
 | JVM 测试 | `beta.1` 候选本地和 CI 19/19 通过 |
 | Android Lint | `No issues found` |
 | Release 构建 | signed APK、v2 签名和版本校验通过 |
 | 真机回归 | `beta.1` 主力真机和 Android 16/12 双机远程回归均通过 |
-| 当前重点 | 收集 Beta P0/P1 反馈，准备 API 29/Android 16 兼容和正式版升级验证 |
+| 当前重点 | 补齐正式版剩余门禁：CI、Tag、Release 和线上附件复验 |
 
 ## 3. 精简原则
 
@@ -124,13 +124,14 @@ API 29、API 35/36 和 UI 自动化不是 Beta 的固定全量门禁；当 minSd
 正式版发布前必须满足：
 
 - [ ] 没有开放 P0，本地稳定范围没有未接受的 P1。
-- [ ] CI、Lint、关键单元测试和 signed Release 构建通过。
+- [ ] CI 通过；本地 Lint、关键单元测试和 signed Release 构建已于 2026-07-07 通过。
 - [ ] 最新 Beta → `0.1.0` 覆盖升级成功；只有明确承诺从首个公开 Alpha 直接升级时才额外验证该路径。
-- [ ] 有效备份恢复、非法输入拒绝和数据保留有可重复证据。
-- [ ] 主力真机本地核心和两台真机远程回归通过。
+- [x] 有效备份恢复和数据保留有可重复证据；非法输入拒绝、导入失败回滚、有效备份恢复、应用内备份导出日志隐私和 `beta.1 -> 0.1.0` 数据保留已有自动化或真机证据。
+- [x] 主力真机本地核心通过；主力真机本地 SAF Smoke 已于 2026-07-07 通过，双机远程 Smoke 已于 2026-07-07 在 Android 12 + Android 16 通过。
 - [x] minSdk 环境和 API 35/36 环境至少各完成一次安装、启动和基础浏览检查：2026-07-06 API 29 完成本地 SAF 浏览并修复 REL-012；Android 16/API 36 已完成 Beta 覆盖安装、冷启动和远程浏览。
-- [ ] 正式 APK 的 hash、签名、版本、安装和冷启动通过。
-- [ ] Release 日志隐私和仓库隐私审计通过。
+- [x] 正式候选 APK 的 hash、签名、版本、安装和冷启动通过：2026-07-08 最新重建产物 SHA-256 `aa3a392eb1085008be9a16260419b80b18fd3326683eb179f399300d78c56eb1`，一键 Smoke 证据 `.cache/qa/smoke/20260708-230348/summary.md`。
+- [x] Android 集成测试通过：2026-07-08 vivo Android 12 执行 instrumentation，Room migration、导入失败回滚和有效备份恢复 3/3 通过。
+- [x] Release 日志隐私和仓库隐私审计通过；基础启动、本地 SAF、双机远程和备份导出流程扫描已通过，`content://`、存储路径、真实 IPv4、崩溃和 Crash buffer 包名命中均为 0。
 - [ ] README、CHANGELOG、Release Notes 和安全说明同步。
 
 如果 Beta 后只修改文档、元数据或低风险 UI，可以直接发布 `0.1.0`；如果修改数据库、备份格式、远程协议、签名、targetSdk 或核心事务逻辑，应增加 `beta.2` 或 `rc.1`。

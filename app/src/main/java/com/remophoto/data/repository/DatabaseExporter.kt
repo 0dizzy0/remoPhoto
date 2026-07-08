@@ -80,7 +80,8 @@ object DatabaseExporter {
     internal suspend fun importDatabase(
         context: Context,
         sourceUri: Uri,
-        stageObserver: ImportStageObserver
+        stageObserver: ImportStageObserver,
+        restartProcess: Boolean = true
     ): Boolean = withContext(Dispatchers.IO) {
         val workDir = createWorkDir(context, "import")
         val stagedDir = File(workDir, "staged").apply { mkdirs() }
@@ -151,8 +152,11 @@ object DatabaseExporter {
 
             AppLogger.i(TAG, "导入成功，即将重启进程")
             _events.tryEmit(ExportEvent.Success("导入成功"))
-            Process.killProcess(Process.myPid())
-            exitProcess(0)
+            if (restartProcess) {
+                Process.killProcess(Process.myPid())
+                exitProcess(0)
+            }
+            true
         } catch (e: Exception) {
             AppLogger.e(TAG, "导入失败", e)
             if (databaseClosed) rollback(context, currentBackup, settingsBackup, hadOriginalSettings)
