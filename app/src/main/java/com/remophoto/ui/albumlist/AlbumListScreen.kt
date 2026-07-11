@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -85,6 +86,7 @@ fun AlbumListScreen(
     val currentPage by viewModel.currentPage.collectAsState()
     val totalPages by viewModel.totalPages.collectAsState()
     val activeFilterCategoryName by viewModel.filterCategoryName.collectAsState()
+    val activeFilterCategoryId by viewModel.filterCategoryId.collectAsState()
     val pagedAlbums by viewModel.pagedAlbums.collectAsState()
     val selectedRepoId by viewModel.selectedRepoId.collectAsState()
     val selectedRepoName by viewModel.selectedRepoName.collectAsState()
@@ -112,11 +114,19 @@ fun AlbumListScreen(
         when {
             categoryId != null && categoryName != null -> {
                 AppLogger.i(TAG, "Apply album_list route: categoryId=$categoryId, categoryName=$categoryName")
-                viewModel.loadAlbumsByCategory(categoryId, categoryName)
+                if (activeFilterCategoryId != categoryId) {
+                    viewModel.loadAlbumsByCategory(categoryId, categoryName)
+                } else {
+                    AppLogger.i(TAG, "Keep album_list state: categoryId=$categoryId, page=$currentPage")
+                }
             }
             repoId != null && repoName != null -> {
                 AppLogger.i(TAG, "Apply album_list route: repoId=$repoId, repoName=$repoName")
-                viewModel.selectRepo(repoId, repoName)
+                if (selectedRepoId != repoId) {
+                    viewModel.selectRepo(repoId, repoName)
+                } else {
+                    AppLogger.i(TAG, "Keep album_list state: repoId=$repoId, page=$currentPage")
+                }
             }
             else -> {
                 AppLogger.i(TAG, "Apply album_list route: repository root")
@@ -468,6 +478,17 @@ fun AlbumListScreen(
                     }
                 } else {
                     // ===== 相册列表视图 =====
+                    val gridState = rememberLazyGridState()
+                    val listState = rememberLazyListState()
+
+                    LaunchedEffect(currentPage) {
+                        if (browsingAlbumId == null) {
+                            gridState.scrollToItem(0)
+                            listState.scrollToItem(0)
+                            AppLogger.i(TAG, "分页后回到列表顶部: page=$currentPage")
+                        }
+                    }
+
                     // 根级用分页数据，子相册用全量子相册
                     val displayAlbums = if (browsingAlbumId != null) {
                         remember(albumTree, browsingAlbumId) {
@@ -507,6 +528,7 @@ fun AlbumListScreen(
                         if (isGridView) {
                             LazyVerticalGrid(
                                 columns = GridCells.Fixed(2),
+                                state = gridState,
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .padding(padding),
@@ -542,8 +564,6 @@ fun AlbumListScreen(
                                 }
                             }
                         } else {
-                            val listState = rememberLazyListState()
-
                             Box(modifier = Modifier.fillMaxSize().padding(padding)) {
                                 LazyColumn(
                                     state = listState,
