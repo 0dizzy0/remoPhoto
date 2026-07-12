@@ -13,6 +13,7 @@
 - M0 **当前功能验证完成**：基线、依赖源、SMBJ `0.14.0` 解析、独立 Android Spike、Debug 与 minified Release/R8 已通过；Android 12 真机已完成 Windows SMB 认证和共享根枚举（`PASS: entries=63`）。API 29、Samba/NAS、资源压力和完整兼容矩阵按产品决定延后至 M5 上线前门禁。
 - M1 **本地回归完成、真机回归待执行**：协议无关契约、HTTP adapter、source router、opaque key、取消语义和远程日志脱敏已实现；JVM 32/32、Lint 和 app minified Release 通过。HTTP 双机 Smoke 需设备接入后补齐。
 - M2 **完成**：Room v5、规范化 `identity_key`、v4 迁移/备份导入、凭据生命周期与补偿、缺凭据恢复、SMB2/3 会话边界、并发/超时/取消、只读权限集、资源关闭及错误分类已实现；JVM 45/45、Android 12 真机迁移/导入/Keystore 4/4、Lint、Debug 与 minified Release 通过。API 29 与发布级完整门禁仍按决定保留到 M5。
+- M3 **核心开发与当前功能验证完成**：已实现共享根/子目录递归快照、图片过滤、根相册及父子映射、磁盘 spool、10,001 图片批处理、事务原子切换、失败保留旧索引、SMB 媒体引用、Coil 静态图/GIF 读取、确定性缓存键、只读流资源释放、网络约束 WorkManager、有界重试和删除时定向清理。JVM 56/56、Android 12 真机 M3 集成 4/4、Lint 与 minified Release 通过。真实 Windows 大仓库的正式 app 端到端扫描/分页/浏览需等待 M4 提供 SMB 配置入口后执行，因此 M3 的“真实 10,000+ 仓库”最终退出项仍待补证。
 
 ## 1. 目标、范围与默认约定
 
