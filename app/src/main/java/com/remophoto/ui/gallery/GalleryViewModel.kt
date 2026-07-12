@@ -94,17 +94,17 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                     if (connId != null) {
                         val conn = remoteConnectionDao.getConnectionById(connId)
                         if (conn != null) {
-                            // 从 directoryPath 解析远程相册 ID（格式: host:port/remoteAlbumId）
-                            val remoteAlbumId = albumEntity.directoryPath.substringAfterLast("/").toLongOrNull()
-                            if (remoteAlbumId != null) {
-                                AppLogger.i(TAG, "触发远程图片同步: album=$albumId, remoteId=$remoteAlbumId")
+                            // M1 保留 HTTP 的原路径格式，但只把末段作为协议 opaque key 传递。
+                            val remoteAlbumKey = albumEntity.directoryPath
+                                .substringAfterLast("/")
+                                .takeIf(String::isNotBlank)
+                            if (remoteAlbumKey != null) {
+                                AppLogger.i(TAG, "触发远程图片同步: albumId=$albumId, connId=$connId")
                                 syncRemoteUseCase.syncImages(
                                     connection = conn,
                                     localAlbumId = albumId,
-                                    remoteAlbumId = remoteAlbumId,
-                                    localRepoId = albumEntity.repositoryId,
-                                    host = conn.host,
-                                    port = conn.port
+                                    remoteAlbumKey = remoteAlbumKey,
+                                    localRepoId = albumEntity.repositoryId
                                 )
                             }
                         }

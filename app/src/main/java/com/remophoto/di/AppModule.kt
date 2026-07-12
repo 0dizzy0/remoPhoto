@@ -10,6 +10,8 @@ import com.remophoto.data.local.dao.RemoteConnectionDao
 import com.remophoto.data.local.dao.RepositoryDao
 import com.remophoto.data.security.KeyStoreManager
 import com.remophoto.data.remote.RemoteHttpClient
+import com.remophoto.data.remote.HttpRemoteCatalogSource
+import com.remophoto.data.remote.RemoteSourceRouter
 import com.remophoto.data.repository.AlbumRepository
 import com.remophoto.data.repository.ImageRepository
 import com.remophoto.data.repository.RemoteConnectionRepository
@@ -90,8 +92,14 @@ class DependencyContainer(private val app: RemoPhotoApp) {
 
     val remoteHttpClient: RemoteHttpClient by lazy { RemoteHttpClient() }
 
+    val remoteSourceRouter: RemoteSourceRouter by lazy {
+        RemoteSourceRouter(
+            listOf(HttpRemoteCatalogSource(remoteHttpClient))
+        )
+    }
+
     val remoteConnectionRepository: RemoteConnectionRepository by lazy {
-        RemoteConnectionRepository(remoteHttpClient, remoteConnectionDao)
+        RemoteConnectionRepository(remoteSourceRouter, remoteConnectionDao)
     }
 
     val syncRemoteRepositoryUseCase: SyncRemoteRepositoryUseCase by lazy {

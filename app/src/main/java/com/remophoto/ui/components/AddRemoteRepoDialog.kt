@@ -197,13 +197,16 @@ fun AddRemoteRepoDialog(
                                     scope.launch {
                                         testing = true
                                         testResult = null
-                                        AppLogger.i("AddRemoteRepo", "手动测试连接: host=$host, port=$port")
+                                        AppLogger.i("AddRemoteRepo", "手动测试连接开始")
                                         testResult = try {
                                             val r = RemoteHttpClient().ping(host, port)
                                             AppLogger.i("AddRemoteRepo", "手动测试结果: $r")
                                             r
                                         } catch (ex: Exception) {
-                                            AppLogger.e("AddRemoteRepo", "手动测试异常", ex)
+                                            AppLogger.e(
+                                                "AddRemoteRepo",
+                                                "手动测试异常: category=${ex.javaClass.simpleName}",
+                                            )
                                             false
                                         }
                                         testing = false
@@ -323,7 +326,7 @@ private suspend fun addRemoteRepo(
     onError: (String) -> Unit
 ) {
     try {
-        AppLogger.d("AddRemoteRepo", "添加远程仓库详情: name=$displayName, host=$host, port=$port")
+        AppLogger.d("AddRemoteRepo", "添加远程仓库请求")
         AppLogger.i("AddRemoteRepo", "开始添加远程仓库")
         val deps = context.dependencies
         val connDao = deps.remoteConnectionDao
@@ -333,7 +336,7 @@ private suspend fun addRemoteRepo(
         val wlm = com.remophoto.data.server.WifiLockManager(context)
         val myIp = wlm.getLanIp()
         if (myIp != null && host == myIp) {
-            AppLogger.w("AddRemoteRepo", "拒绝添加本机: host=$host")
+            AppLogger.w("AddRemoteRepo", "拒绝添加本机")
             onError("无法添加本设备自身，请在其他设备上连接此设备")
             return
         }
@@ -391,7 +394,10 @@ private suspend fun addRemoteRepo(
             AppLogger.i("AddRemoteRepo", "RepositoryEntity 已插入")
         } catch (e: Exception) {
             // 回滚：删除已创建的连接记录
-            AppLogger.e("AddRemoteRepo", "仓库插入失败，回滚连接记录", e)
+            AppLogger.e(
+                "AddRemoteRepo",
+                "仓库插入失败，回滚连接记录: category=${e.javaClass.simpleName}",
+            )
             try { connDao.deleteById(connId) } catch (_: Exception) {}
             throw e
         }
@@ -399,7 +405,7 @@ private suspend fun addRemoteRepo(
         AppLogger.i("AddRemoteRepo", "远程仓库已添加: connId=$connId")
         onSuccess()
     } catch (e: Exception) {
-        AppLogger.e("AddRemoteRepo", "❌ 添加远程仓库失败", e)
-        onError("添加失败: ${e.message}")
+        AppLogger.e("AddRemoteRepo", "添加远程仓库失败: category=${e.javaClass.simpleName}")
+        onError("添加失败，请检查连接配置后重试")
     }
 }

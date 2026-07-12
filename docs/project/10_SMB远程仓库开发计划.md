@@ -6,6 +6,14 @@
 
 基线提交：`dc52b95`（包含相册分页修复及 UI Smoke）
 
+## 0. 当前执行状态
+
+截至 2026-07-12：
+
+- M0 **部分完成**：基线、依赖源、SMBJ `0.14.0` 解析、独立 Android Spike、Debug 与 minified Release/R8 已通过；当前无 adb 设备，真机互通和资源压力门禁待执行，ADR 仍为“待真机验证”。
+- M1 **本地回归完成、真机回归待执行**：协议无关契约、HTTP adapter、source router、opaque key、取消语义和远程日志脱敏已实现；JVM 32/32、Lint 和 app minified Release 通过。HTTP 双机 Smoke 需设备接入后补齐。
+- 按门禁要求，M2、M3、Room v5、正式 SMB 依赖和 SMB UI 均未开始。
+
 ## 1. 目标、范围与默认约定
 
 在 `0.1.0` 已有本地 SAF、remoPhoto HTTP/mDNS 远程仓库和远程缓存能力之上，增加 Android 客户端直接浏览 PC/NAS SMB 共享的能力。建议作为 `0.2.0` 的主功能开发，但在依赖兼容性 Spike 通过前不修改版本号或承诺发布日期。
