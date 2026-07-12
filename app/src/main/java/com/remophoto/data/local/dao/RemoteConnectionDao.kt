@@ -32,12 +32,12 @@ interface RemoteConnectionDao {
     @Query("SELECT * FROM remote_connections WHERE type = :type ORDER BY added_time DESC")
     fun getConnectionsByType(type: String): Flow<List<RemoteConnectionEntity>>
 
-    /** 根据主机和端口查找连接（用于去重） */
-    @Query("SELECT * FROM remote_connections WHERE host = :host AND port = :port LIMIT 1")
-    suspend fun getConnectionByHostAndPort(host: String, port: Int): RemoteConnectionEntity?
+    /** 根据规范化身份查找连接（同一主机可安全添加不同 SMB 共享/账号/根目录）。 */
+    @Query("SELECT * FROM remote_connections WHERE identity_key = :identityKey LIMIT 1")
+    suspend fun getConnectionByIdentity(identityKey: String): RemoteConnectionEntity?
 
     /** 插入连接 */
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(connection: RemoteConnectionEntity): Long
 
     /** 更新连接 */

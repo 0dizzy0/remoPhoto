@@ -187,23 +187,13 @@ class RepositoryManagerViewModel(application: Application) : AndroidViewModel(ap
                 val connId = repo?.remoteConnectionId
                 if (connId != null) {
                     AppLogger.i(TAG, "删除远程仓库: repoId=$repoId, connId=$connId")
-                    // 清理 Keystore 凭据
-                    try {
-                        container.keyStoreManager.deleteCredential(connId)
-                        AppLogger.d(TAG, "已删除 Keystore 凭据: connId=$connId")
-                    } catch (e: Exception) {
-                        AppLogger.w(TAG, "删除 Keystore 凭据失败: $e")
+                    val result = container.remoteRepositoryLifecycleService.remove(repoId)
+                    if (result.externalCleanupPending) {
+                        AppLogger.w(TAG, "远程仓库外部清理待重试: connId=$connId")
                     }
-                    // 删除远程连接记录
-                    try {
-                        container.remoteConnectionDao.deleteById(connId)
-                        AppLogger.d(TAG, "已删除 RemoteConnection: connId=$connId")
-                    } catch (e: Exception) {
-                        AppLogger.w(TAG, "删除 RemoteConnection 失败: $e")
-                    }
+                } else {
+                    manager.deleteRepository(repoId)
                 }
-
-                manager.deleteRepository(repoId)
                 AppLogger.i(TAG, "仓库已删除: repoId=$repoId, isRemote=${connId != null}")
             } catch (e: Exception) {
                 _errorMessage.value = "删除仓库失败: ${e.message}"

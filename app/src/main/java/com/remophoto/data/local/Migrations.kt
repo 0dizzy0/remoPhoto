@@ -2,6 +2,8 @@ package com.remophoto.data.local
 
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.remophoto.data.local.entity.RemoteType
+import com.remophoto.data.remote.RemoteConnectionIdentity
 
 /**
  * Room 数据库迁移定义
@@ -105,6 +107,113 @@ object Migrations {
             db.execSQL(
                 "UPDATE albums SET last_modified = COALESCE(" +
                     "(SELECT MAX(images.last_modified) FROM images WHERE images.album_id = albums.id), 0)"
+            )
+        }
+    }
+
+    /** v4 → v5: 补齐 SMB 元数据并以规范化 identity_key 唯一去重。 */
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            data class ExistingConnection(
+                val id: Long,
+                val type: String,
+                val host: String,
+                val port: Int,
+                val displayName: String,
+                val shareName: String?,
+                val username: String?,
+                val addedTime: Long,
+                val lastConnectedTime: Long?,
+                val status: String,
+                val identityKey: String,
+            )
+
+            val connections = mutableListOf<ExistingConnection>()
+            val identities = mutableSetOf<String>()
+            db.query(
+                "SELECT id, type, host, port, display_name, share_name, username, " +
+                    "added_time, last_connected_time, status FROM remote_connections ORDER BY id"
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val typeName = cursor.getString(1)
+                    val type = RemoteType.valueOf(typeName)
+                    val host = cursor.getString(2)
+                    val port = cursor.getInt(3)
+                    val shareName = if (cursor.isNull(5)) null else cursor.getString(5)
+                    val username = if (cursor.isNull(6)) null else cursor.getString(6)
+                    val identity = RemoteConnectionIdentity.create(
+                        type = type,
+                        host = host,
+                        port = port,
+                        shareName = shareName,
+                        username = username,
+                    )
+                    check(identities.add(identity)) {
+                        "v4 远程连接规范化后存在重复项，已停止迁移以避免数据覆盖"
+                    }
+                    connections += ExistingConnection(
+                        id = cursor.getLong(0),
+                        type = typeName,
+                        host = host,
+                        port = port,
+                        displayName = cursor.getString(4),
+                        shareName = shareName,
+                        username = username,
+                        addedTime = cursor.getLong(7),
+                        lastConnectedTime = if (cursor.isNull(8)) null else cursor.getLong(8),
+                        status = cursor.getString(9),
+                        identityKey = identity,
+                    )
+                }
+            }
+
+            db.execSQL(
+                """
+                CREATE TABLE remote_connections_v5 (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    type TEXT NOT NULL,
+                    host TEXT NOT NULL,
+                    port INTEGER NOT NULL,
+                    display_name TEXT NOT NULL,
+                    share_name TEXT,
+                    username TEXT,
+                    domain TEXT,
+                    root_path TEXT,
+                    identity_key TEXT NOT NULL,
+                    added_time INTEGER NOT NULL,
+                    last_connected_time INTEGER,
+                    status TEXT NOT NULL
+                )
+                """.trimIndent()
+            )
+            val insert = db.compileStatement(
+                "INSERT INTO remote_connections_v5 " +
+                    "(id, type, host, port, display_name, share_name, username, domain, root_path, " +
+                    "identity_key, added_time, last_connected_time, status) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)"
+            )
+            connections.forEach { connection ->
+                insert.clearBindings()
+                insert.bindLong(1, connection.id)
+                insert.bindString(2, connection.type)
+                insert.bindString(3, connection.host)
+                insert.bindLong(4, connection.port.toLong())
+                insert.bindString(5, connection.displayName)
+                connection.shareName?.let { insert.bindString(6, it) } ?: insert.bindNull(6)
+                connection.username?.let { insert.bindString(7, it) } ?: insert.bindNull(7)
+                insert.bindString(8, connection.identityKey)
+                insert.bindLong(9, connection.addedTime)
+                connection.lastConnectedTime?.let { insert.bindLong(10, it) } ?: insert.bindNull(10)
+                insert.bindString(11, connection.status)
+                insert.executeInsert()
+            }
+            db.execSQL("DROP TABLE remote_connections")
+            db.execSQL("ALTER TABLE remote_connections_v5 RENAME TO remote_connections")
+            db.execSQL("CREATE INDEX index_remote_connections_host ON remote_connections (host)")
+            db.execSQL("CREATE INDEX index_remote_connections_status ON remote_connections (status)")
+            db.execSQL(
+                "CREATE UNIQUE INDEX index_remote_connections_identity_key " +
+                    "ON remote_connections (identity_key)"
             )
         }
     }

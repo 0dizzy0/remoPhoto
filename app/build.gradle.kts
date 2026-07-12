@@ -159,6 +159,9 @@ dependencies {
     // Phase 4: JmDNS — mDNS 服务注册与发现
     implementation("org.jmdns:jmdns:3.5.9")
 
+    // SMB2/3 只读客户端；Android/R8 兼容性已在独立 Spike 中验证。
+    implementation("com.hierynomus:smbj:0.14.0")
+
     // SplashScreen
     implementation("androidx.core:core-splashscreen:1.0.1")
 

@@ -8,6 +8,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.remophoto.data.local.AppDatabase
 import com.remophoto.data.local.entity.CategoryEntity
+import com.remophoto.data.local.entity.RemoteType
+import com.remophoto.data.remote.RemoteConnectionIdentity
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -173,6 +175,31 @@ class DatabaseImportRollbackTest {
         )
     }
 
+    @Test
+    fun version4RawBackupImportsAndMigratesRemoteIdentity() = runBlocking {
+        val active = AppDatabase.getInstance(context)
+        active.openHelper.writableDatabase
+        val version4 = importedDatabaseFile()
+        createVersion4Database(active, version4)
+
+        val result = DatabaseExporter.importDatabase(
+            context = context,
+            sourceUri = Uri.fromFile(version4),
+            stageObserver = ImportStageObserver.NONE,
+            restartProcess = false,
+        )
+
+        assertTrue(result)
+        val restored = AppDatabase.getInstance(context)
+        val connection = restored.remoteConnectionDao().getConnectionById(7L)
+        assertEquals(5, restored.openHelper.writableDatabase.version)
+        assertEquals(
+            RemoteConnectionIdentity.create(RemoteType.HTTP_MDNS, "Example.COM.", 8080),
+            connection?.identityKey,
+        )
+        assertEquals("DISCONNECTED", connection?.status?.name)
+    }
+
     private fun createImportedDatabase(
         database: AppDatabase,
         target: File,
@@ -190,6 +217,46 @@ class DatabaseImportRollbackTest {
                 "UPDATE categories SET name = ? WHERE id = ?",
                 arrayOf(IMPORTED_CATEGORY, categoryId)
             )
+        }
+    }
+
+    private fun createVersion4Database(database: AppDatabase, target: File) {
+        target.delete()
+        val escapedPath = target.absolutePath.replace("'", "''")
+        database.openHelper.writableDatabase.execSQL("VACUUM INTO '$escapedPath'")
+        SQLiteDatabase.openDatabase(
+            target.absolutePath,
+            null,
+            SQLiteDatabase.OPEN_READWRITE,
+        ).use { version4 ->
+            version4.execSQL("DROP INDEX index_remote_connections_identity_key")
+            version4.execSQL("DROP TABLE remote_connections")
+            version4.execSQL(
+                """
+                CREATE TABLE remote_connections (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    type TEXT NOT NULL,
+                    host TEXT NOT NULL,
+                    port INTEGER NOT NULL,
+                    display_name TEXT NOT NULL,
+                    share_name TEXT,
+                    username TEXT,
+                    added_time INTEGER NOT NULL,
+                    last_connected_time INTEGER,
+                    status TEXT NOT NULL DEFAULT 'DISCONNECTED'
+                )
+                """.trimIndent()
+            )
+            version4.execSQL("CREATE INDEX index_remote_connections_host ON remote_connections (host)")
+            version4.execSQL("CREATE INDEX index_remote_connections_status ON remote_connections (status)")
+            version4.execSQL(
+                """
+                INSERT INTO remote_connections (
+                    id, type, host, port, display_name, added_time, status
+                ) VALUES (7, 'HTTP_MDNS', 'Example.COM.', 8080, 'fixture', 1, 'CONNECTED')
+                """.trimIndent()
+            )
+            version4.version = 4
         }
     }
 

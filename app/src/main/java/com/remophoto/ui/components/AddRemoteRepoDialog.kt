@@ -13,10 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.remophoto.data.local.entity.ConnectionStatus
-import com.remophoto.data.local.entity.RemoteConnectionEntity
 import com.remophoto.data.local.entity.RemoteType
-import com.remophoto.data.local.entity.RepositoryEntity
 import com.remophoto.data.remote.RemoteHttpClient
 import com.remophoto.data.server.DiscoveredDevice
 import com.remophoto.data.server.MdnsDiscoveryService
@@ -329,8 +326,6 @@ private suspend fun addRemoteRepo(
         AppLogger.d("AddRemoteRepo", "添加远程仓库请求")
         AppLogger.i("AddRemoteRepo", "开始添加远程仓库")
         val deps = context.dependencies
-        val connDao = deps.remoteConnectionDao
-        val repoDao = deps.repositoryDao
 
         // 防止添加本机自身
         val wlm = com.remophoto.data.server.WifiLockManager(context)
@@ -341,68 +336,14 @@ private suspend fun addRemoteRepo(
             return
         }
 
-        // 检查连接是否已存在
-        val existingConn = connDao.getConnectionByHostAndPort(host, port)
-        if (existingConn != null) {
-            // 连接已存在 → 检查是否有对应的 RepositoryEntity
-            val existingRepos = repoDao.getAllRepositoriesList()
-            val hasRepo = existingRepos.any { it.remoteConnectionId == existingConn.id }
-            if (hasRepo) {
-                AppLogger.w("AddRemoteRepo", "设备和仓库均已存在: connId=${existingConn.id}")
-                onError("该设备已添加")
-                return
-            }
-            // 脏数据修复：连接存在但仓库缺失 → 补建仓库
-            AppLogger.w("AddRemoteRepo", "连接存在但仓库缺失，补建: connId=${existingConn.id}")
-            val repo = RepositoryEntity(
-                uriString = "http://$host:$port",
-                path = null,
-                name = displayName,
-                remoteConnectionId = existingConn.id,
-                addedTime = System.currentTimeMillis()
+        deps.remoteRepositoryLifecycleService.saveTested(
+            com.remophoto.data.repository.RemoteRepositoryConfig(
+                type = RemoteType.HTTP_MDNS,
+                host = host,
+                port = port,
+                displayName = displayName,
             )
-            repoDao.insert(repo)
-            AppLogger.i("AddRemoteRepo", "✅ 仓库已补建: connId=${existingConn.id}")
-            onSuccess()
-            return
-        }
-
-        // 全新设备：创建连接
-        AppLogger.d("AddRemoteRepo", "创建 RemoteConnectionEntity...")
-        val connection = RemoteConnectionEntity(
-            type = RemoteType.HTTP_MDNS,
-            host = host,
-            port = port,
-            displayName = displayName,
-            addedTime = System.currentTimeMillis(),
-            status = ConnectionStatus.CONNECTED
         )
-        val connId = connDao.insert(connection)
-        AppLogger.i("AddRemoteRepo", "RemoteConnection 已插入: id=$connId")
-
-        // 创建对应的仓库实体（如果失败则回滚连接）
-        AppLogger.d("AddRemoteRepo", "创建 RepositoryEntity...")
-        val repo = RepositoryEntity(
-            uriString = "http://$host:$port",
-            path = null,
-            name = displayName,
-            remoteConnectionId = connId,
-            addedTime = System.currentTimeMillis()
-        )
-        try {
-            repoDao.insert(repo)
-            AppLogger.i("AddRemoteRepo", "RepositoryEntity 已插入")
-        } catch (e: Exception) {
-            // 回滚：删除已创建的连接记录
-            AppLogger.e(
-                "AddRemoteRepo",
-                "仓库插入失败，回滚连接记录: category=${e.javaClass.simpleName}",
-            )
-            try { connDao.deleteById(connId) } catch (_: Exception) {}
-            throw e
-        }
-
-        AppLogger.i("AddRemoteRepo", "远程仓库已添加: connId=$connId")
         onSuccess()
     } catch (e: Exception) {
         AppLogger.e("AddRemoteRepo", "添加远程仓库失败: category=${e.javaClass.simpleName}")

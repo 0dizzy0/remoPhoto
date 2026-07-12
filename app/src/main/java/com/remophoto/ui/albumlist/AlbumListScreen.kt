@@ -864,11 +864,13 @@ private fun RemoteRepoCard(
         ConnectionStatus.CONNECTED -> androidx.compose.ui.graphics.Color(0xFF4CAF50)
         ConnectionStatus.DISCONNECTED -> androidx.compose.ui.graphics.Color(0xFF9E9E9E)
         ConnectionStatus.ERROR -> androidx.compose.ui.graphics.Color(0xFFF44336)
+        ConnectionStatus.AUTH_REQUIRED -> androidx.compose.ui.graphics.Color(0xFFFF9800)
     }
     val statusText = when (status) {
         ConnectionStatus.CONNECTED -> "已连接"
         ConnectionStatus.DISCONNECTED -> "离线"
         ConnectionStatus.ERROR -> "错误"
+        ConnectionStatus.AUTH_REQUIRED -> "需重新认证"
     }
 
     Card(

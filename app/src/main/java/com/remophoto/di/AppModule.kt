@@ -12,9 +12,12 @@ import com.remophoto.data.security.KeyStoreManager
 import com.remophoto.data.remote.RemoteHttpClient
 import com.remophoto.data.remote.HttpRemoteCatalogSource
 import com.remophoto.data.remote.RemoteSourceRouter
+import com.remophoto.data.remote.smb.SmbSessionManager
 import com.remophoto.data.repository.AlbumRepository
 import com.remophoto.data.repository.ImageRepository
 import com.remophoto.data.repository.RemoteConnectionRepository
+import com.remophoto.data.repository.RemoteRepositoryLifecycleService
+import com.remophoto.data.repository.RoomRemoteMetadataStore
 import com.remophoto.data.repository.RepositoryManager
 import com.remophoto.data.repository.SettingsRepository
 import com.remophoto.data.scanner.FileScanner
@@ -100,6 +103,28 @@ class DependencyContainer(private val app: RemoPhotoApp) {
 
     val remoteConnectionRepository: RemoteConnectionRepository by lazy {
         RemoteConnectionRepository(remoteSourceRouter, remoteConnectionDao)
+    }
+
+    private val remoteMetadataStore: RoomRemoteMetadataStore by lazy {
+        RoomRemoteMetadataStore(
+            database = database,
+            connectionDao = remoteConnectionDao,
+            repositoryDao = repositoryDao,
+            imageDao = imageDao,
+            albumDao = albumDao,
+        )
+    }
+
+    val smbSessionManager: SmbSessionManager by lazy {
+        SmbSessionManager(keyStoreManager)
+    }
+
+    val remoteRepositoryLifecycleService: RemoteRepositoryLifecycleService by lazy {
+        RemoteRepositoryLifecycleService(
+            metadataStore = remoteMetadataStore,
+            credentialStore = keyStoreManager,
+            sessionInvalidator = smbSessionManager,
+        )
     }
 
     val syncRemoteRepositoryUseCase: SyncRemoteRepositoryUseCase by lazy {

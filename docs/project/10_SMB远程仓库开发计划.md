@@ -10,9 +10,9 @@
 
 截至 2026-07-12：
 
-- M0 **部分完成**：基线、依赖源、SMBJ `0.14.0` 解析、独立 Android Spike、Debug 与 minified Release/R8 已通过；当前无 adb 设备，真机互通和资源压力门禁待执行，ADR 仍为“待真机验证”。
+- M0 **当前功能验证完成**：基线、依赖源、SMBJ `0.14.0` 解析、独立 Android Spike、Debug 与 minified Release/R8 已通过；Android 12 真机已完成 Windows SMB 认证和共享根枚举（`PASS: entries=63`）。API 29、Samba/NAS、资源压力和完整兼容矩阵按产品决定延后至 M5 上线前门禁。
 - M1 **本地回归完成、真机回归待执行**：协议无关契约、HTTP adapter、source router、opaque key、取消语义和远程日志脱敏已实现；JVM 32/32、Lint 和 app minified Release 通过。HTTP 双机 Smoke 需设备接入后补齐。
-- 按门禁要求，M2、M3、Room v5、正式 SMB 依赖和 SMB UI 均未开始。
+- M2 **完成**：Room v5、规范化 `identity_key`、v4 迁移/备份导入、凭据生命周期与补偿、缺凭据恢复、SMB2/3 会话边界、并发/超时/取消、只读权限集、资源关闭及错误分类已实现；JVM 45/45、Android 12 真机迁移/导入/Keystore 4/4、Lint、Debug 与 minified Release 通过。API 29 与发布级完整门禁仍按决定保留到 M5。
 
 ## 1. 目标、范围与默认约定
 
@@ -184,7 +184,7 @@ interface RemoteMediaSource {
 - 准备不含私人数据的 Windows 和 Samba/NAS 测试共享及一键初始化/销毁脚本；脚本输出服务状态、协议配置和测试数据摘要，不输出凭据。
 - 按第 3 节完成首选库 Spike、依赖源可达性检查和 ADR。
 
-退出条件：Spike 全部门槛通过，且业务代码尚未依赖具体 SMB API。
+当前开发阶段退出条件：依赖、Debug/minified Release 及当前 Android 12 真机认证和枚举通过，且业务代码尚未依赖具体 SMB API。第 3 节其余完整兼容性门槛移至 M5，在上线前必须全部完成。
 
 ### M1：协议解耦与日志基线（P0）
 
@@ -233,6 +233,7 @@ interface RemoteMediaSource {
 - 单机无人值守 SMB Smoke：开发机提供临时共享，脚本完成前置检查、安装、添加、同步、进入相册、打开静态图/GIF、断线/恢复、远端增删刷新、删除仓库和结果汇总。
 - Smoke 断言基于 UI tree、数据库/结构化日志状态和测试文件摘要，不依赖截图；保留关键截图仅作人工辅助证据。
 - 兼容矩阵至少覆盖 Windows SMB3、Samba/NAS、Android 10/API 29 和一台较新 Android 真机。
+- 补齐 M0 延后的 API 29、Samba/NAS、资源压力、异常矩阵、Release 隐私与许可证/CVE 门禁；这些是上线门禁，不在当前功能开发期间阻塞 M2～M4。
 - 更新 README、功能规格、架构 ADR、测试用例、第三方许可证、隐私说明和 Release Notes。
 
 退出条件：脚本最终只输出 PASS 或 FAIL，并在失败时给出阶段、错误分类和 UTF-8 证据目录；Release 日志隐私、Crash/ANR、资源泄漏和 minified 构建通过。
@@ -282,7 +283,7 @@ interface RemoteMediaSource {
 8. `feat: add SMB setup and management UI`
 9. `test/docs: add SMB smoke, privacy gate and release docs`
 
-首个开发回合只完成 M0 和 M1。M0 未通过不得进入 Room、UI 或正式扫描实现；M1 回归未通过不得把 SMB 适配器接入主流程。
+M0 当前功能验证与 M1 回归通过后进入 M2；API 29 和完整发布矩阵按已确认决定延后至 M5，上线前仍为强制门禁。M1 回归未通过不得把 SMB 适配器接入主流程。
 
 ## 10. 已确认范围决策
 
