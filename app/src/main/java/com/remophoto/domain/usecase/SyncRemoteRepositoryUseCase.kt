@@ -9,6 +9,7 @@ import com.remophoto.data.local.entity.AlbumEntity
 import com.remophoto.data.local.entity.ConnectionStatus
 import com.remophoto.data.local.entity.ImageEntity
 import com.remophoto.data.local.entity.RemoteConnectionEntity
+import com.remophoto.data.local.entity.RemoteType
 import com.remophoto.data.remote.RemoteAlbumRecord
 import com.remophoto.data.remote.RemoteMediaRecord
 import com.remophoto.data.remote.RemoteMediaVariant
@@ -28,7 +29,8 @@ class SyncRemoteRepositoryUseCase(
     private val albumDao: AlbumDao,
     private val imageDao: ImageDao,
     private val repositoryDao: RepositoryDao,
-    private val remoteRepository: RemoteConnectionRepository
+    private val remoteRepository: RemoteConnectionRepository,
+    private val syncSmbRepository: SyncSmbRepositoryUseCase? = null,
 ) {
 
     companion object {
@@ -46,6 +48,11 @@ class SyncRemoteRepositoryUseCase(
         connection: RemoteConnectionEntity,
         localRepoId: Long
     ): Int = withContext(Dispatchers.IO) {
+        if (connection.type == RemoteType.SMB) {
+            return@withContext checkNotNull(syncSmbRepository) { "SMB 快照同步尚未配置" }
+                .execute(connection, localRepoId)
+                .albumCount
+        }
         val startedAt = System.currentTimeMillis()
         AppLogger.i(TAG, "开始同步远程相册: connectionId=${connection.id}, repoId=$localRepoId")
 
@@ -150,6 +157,10 @@ class SyncRemoteRepositoryUseCase(
         localRepoId: Long,
         pageSize: Int = 50
     ): Int = withContext(Dispatchers.IO) {
+        if (connection.type == RemoteType.SMB) {
+            // SMB 在仓库级快照中已一次性建立全部图片索引，进入相册时只读 Room。
+            return@withContext imageDao.getImageCountByAlbum(localAlbumId)
+        }
         AppLogger.i(TAG, "开始同步远程图片: connectionId=${connection.id}, albumId=$localAlbumId")
 
         var page = 1

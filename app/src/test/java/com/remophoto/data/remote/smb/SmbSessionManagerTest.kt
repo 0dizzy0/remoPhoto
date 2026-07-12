@@ -9,6 +9,7 @@ import com.remophoto.data.remote.RemoteErrorCategory
 import com.remophoto.data.security.CredentialStore
 import com.remophoto.util.AppLogger
 import java.net.SocketTimeoutException
+import java.io.ByteArrayInputStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -107,6 +108,23 @@ class SmbSessionManagerTest {
         assertFalse(SmbReadOnlyAccess.fileAccess.isEmpty())
     }
 
+    @Test
+    fun `managed read holds and then releases session`() = runBlocking {
+        val share = FakeShareSession()
+        val manager = SmbSessionManager(
+            RecordingCredentialStore(),
+            SmbSessionBackend { _, _ -> share },
+        )
+
+        val read = manager.openReadOnly(connection(), "album\\image.jpg")
+        assertEquals(1, manager.activeCount())
+        assertEquals(1, read.inputStream.read())
+
+        read.close()
+        assertTrue(share.closed.get())
+        assertEquals(0, manager.activeCount())
+    }
+
     private fun connection() = RemoteConnectionEntity(
         id = 8L,
         type = RemoteType.SMB,
@@ -140,10 +158,17 @@ private class FakeShareSession(
     override val dialect: String = "SMB_3_1_1"
     override val signingRequired: Boolean = true
 
-    override fun list(path: String): Int {
+    override fun list(path: String): List<SmbDirectoryEntry> {
         entered?.countDown()
         if (listDelayMs > 0) Thread.sleep(listDelayMs)
-        return 3
+        return List(3) { index ->
+            SmbDirectoryEntry("entry-$index", false, false, 1L, 1L)
+        }
+    }
+
+    override fun openReadOnly(path: String): SmbFileHandle = object : SmbFileHandle {
+        override val inputStream = ByteArrayInputStream(byteArrayOf(1, 2, 3))
+        override fun close() = inputStream.close()
     }
 
     override fun close() {

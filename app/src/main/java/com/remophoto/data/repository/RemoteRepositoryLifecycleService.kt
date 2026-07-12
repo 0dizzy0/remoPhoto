@@ -36,6 +36,19 @@ interface RemoteSessionInvalidator {
     fun invalidate(connectionId: Long)
 }
 
+interface RemoteRepositoryExternalCleaner {
+    /** Room 删除前取消 Work，并捕获之后需要精确清理的缓存键。 */
+    suspend fun prepare(repositoryId: Long)
+
+    /** Room 删除成功后执行外部缓存清理。 */
+    suspend fun complete(repositoryId: Long)
+}
+
+private object NoOpRemoteRepositoryExternalCleaner : RemoteRepositoryExternalCleaner {
+    override suspend fun prepare(repositoryId: Long) = Unit
+    override suspend fun complete(repositoryId: Long) = Unit
+}
+
 interface RemoteMetadataStore {
     suspend fun findByIdentity(identityKey: String): RemoteConnectionEntity?
     suspend fun create(config: RemoteRepositoryConfig): CreatedRemoteRepository
@@ -117,6 +130,7 @@ class RemoteRepositoryLifecycleService(
     private val metadataStore: RemoteMetadataStore,
     private val credentialStore: CredentialStore,
     private val sessionInvalidator: RemoteSessionInvalidator,
+    private val externalCleaner: RemoteRepositoryExternalCleaner = NoOpRemoteRepositoryExternalCleaner,
 ) {
     suspend fun saveTested(
         config: RemoteRepositoryConfig,
@@ -181,10 +195,21 @@ class RemoteRepositoryLifecycleService(
     }
 
     suspend fun remove(repositoryId: Long): RemoveRemoteRepositoryResult {
-        val connectionId = metadataStore.remove(repositoryId)
-            ?: return RemoveRemoteRepositoryResult(removed = false, externalCleanupPending = false)
+        val prepareFailed = runCatching { externalCleaner.prepare(repositoryId) }.isFailure
+        val connectionId = try {
+            metadataStore.remove(repositoryId)
+        } catch (error: Throwable) {
+            runCatching { externalCleaner.complete(repositoryId) }
+            throw error
+        }
+        if (connectionId == null) {
+            runCatching { externalCleaner.complete(repositoryId) }
+            return RemoveRemoteRepositoryResult(removed = false, externalCleanupPending = false)
+        }
         sessionInvalidator.invalidate(connectionId)
-        val cleanupPending = runCatching { credentialStore.deleteCredential(connectionId) }.isFailure
+        val credentialFailed = runCatching { credentialStore.deleteCredential(connectionId) }.isFailure
+        val cacheFailed = runCatching { externalCleaner.complete(repositoryId) }.isFailure
+        val cleanupPending = prepareFailed || credentialFailed || cacheFailed
         AppLogger.i(
             TAG,
             "远程仓库删除完成: repositoryId=$repositoryId, connectionId=$connectionId, " +

@@ -83,6 +83,25 @@ class RemoteRepositoryLifecycleServiceTest {
         assertEquals(listOf(31L), metadata.removedRepositories)
     }
 
+    @Test
+    fun `prepares work cancellation and completes cache cleanup around metadata removal`() = runTest {
+        val metadata = FakeMetadataStore().apply { removeConnectionId = 12L }
+        val cleaner = FakeExternalCleaner()
+        val service = RemoteRepositoryLifecycleService(
+            metadata,
+            FakeCredentialStore(),
+            FakeSessionInvalidator(),
+            cleaner,
+        )
+
+        val result = service.remove(31L)
+
+        assertTrue(result.removed)
+        assertFalse(result.externalCleanupPending)
+        assertEquals(listOf(31L), cleaner.prepared)
+        assertEquals(listOf(31L), cleaner.completed)
+    }
+
     private fun smbConfig() = RemoteRepositoryConfig(
         type = RemoteType.SMB,
         host = "server",
@@ -156,5 +175,18 @@ private class FakeSessionInvalidator : RemoteSessionInvalidator {
     val invalidated = mutableListOf<Long>()
     override fun invalidate(connectionId: Long) {
         invalidated += connectionId
+    }
+}
+
+private class FakeExternalCleaner : RemoteRepositoryExternalCleaner {
+    val prepared = mutableListOf<Long>()
+    val completed = mutableListOf<Long>()
+
+    override suspend fun prepare(repositoryId: Long) {
+        prepared += repositoryId
+    }
+
+    override suspend fun complete(repositoryId: Long) {
+        completed += repositoryId
     }
 }

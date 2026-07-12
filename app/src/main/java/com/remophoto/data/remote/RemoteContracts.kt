@@ -43,7 +43,72 @@ sealed interface RemoteMediaRef {
     val storageValue: String
 
     data class HttpUrl(override val storageValue: String) : RemoteMediaRef
+
+    /**
+     * SMB 媒体引用只保存连接 ID、不可逆媒体键和版本，不携带端点、账号或远端路径。
+     */
+    data class Smb(
+        val connectionId: Long,
+        val opaqueMediaKey: String,
+        val variant: RemoteMediaVariant,
+        val versionToken: String,
+    ) : RemoteMediaRef {
+        init {
+            require(connectionId > 0L) { "SMB connectionId 必须大于 0" }
+            require(OPAQUE_KEY.matches(opaqueMediaKey)) { "SMB 媒体键格式无效" }
+            require(VERSION_TOKEN.matches(versionToken)) { "SMB 版本标识格式无效" }
+        }
+
+        override val storageValue: String = buildString {
+            append(SCHEME)
+            append(connectionId)
+            append('/')
+            append(opaqueMediaKey)
+            append('/')
+            append(variant.name.lowercase())
+            append('/')
+            append(versionToken)
+        }
+
+        /** Coil memory/disk cache 共用的确定性键。 */
+        val cacheKey: String = "smb:$connectionId:$opaqueMediaKey:${variant.name}:$versionToken"
+
+        fun original(): Smb = if (variant == RemoteMediaVariant.ORIGINAL) this else copy(
+            variant = RemoteMediaVariant.ORIGINAL,
+        )
+
+        companion object {
+            const val SCHEME = "smb-media://"
+            private val OPAQUE_KEY = Regex("[a-f0-9]{64}")
+            private val VERSION_TOKEN = Regex("[a-z0-9-]{1,64}")
+            private val STORAGE = Regex(
+                "^smb-media://([1-9][0-9]*)/([a-f0-9]{64})/(original|thumbnail)/([a-z0-9-]{1,64})$"
+            )
+
+            fun parse(storageValue: String): Smb? {
+                val match = STORAGE.matchEntire(storageValue) ?: return null
+                val connectionId = match.groupValues[1].toLongOrNull() ?: return null
+                val variant = when (match.groupValues[3]) {
+                    "original" -> RemoteMediaVariant.ORIGINAL
+                    "thumbnail" -> RemoteMediaVariant.THUMBNAIL
+                    else -> return null
+                }
+                return Smb(
+                    connectionId = connectionId,
+                    opaqueMediaKey = match.groupValues[2],
+                    variant = variant,
+                    versionToken = match.groupValues[4],
+                )
+            }
+        }
+    }
 }
+
+fun String.isRemoteMediaAddress(): Boolean =
+    startsWith("http://") || startsWith("https://") || startsWith(RemoteMediaRef.Smb.SCHEME)
+
+fun String.remoteMediaCacheKey(suffix: String = ""): String =
+    RemoteMediaRef.Smb.parse(this)?.let { it.cacheKey + suffix } ?: this + suffix
 
 enum class RemoteErrorCategory {
     AUTH_FAILED,

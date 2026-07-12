@@ -1,7 +1,10 @@
 package com.remophoto.data.remote.smb
 
 import com.hierynomus.msdtyp.AccessMask
+import com.hierynomus.msfscc.FileAttributes
 import com.hierynomus.mssmb2.SMB2Dialect
+import com.hierynomus.mssmb2.SMB2CreateDisposition
+import com.hierynomus.mssmb2.SMB2CreateOptions
 import com.hierynomus.mssmb2.SMB2ShareAccess
 import com.hierynomus.smbj.SMBClient
 import com.hierynomus.smbj.SmbConfig
@@ -17,7 +20,9 @@ import com.remophoto.data.repository.RemoteSessionInvalidator
 import com.remophoto.data.security.CredentialStore
 import com.remophoto.util.AppLogger
 import java.io.Closeable
+import java.io.InputStream
 import java.util.Collections
+import java.util.EnumSet
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -38,11 +43,24 @@ data class SmbConnectionReport(
     val elapsedMs: Long,
 )
 
+data class SmbDirectoryEntry(
+    val name: String,
+    val isDirectory: Boolean,
+    val isReparsePoint: Boolean,
+    val size: Long,
+    val lastModified: Long,
+)
+
+interface SmbFileHandle : Closeable {
+    val inputStream: InputStream
+}
+
 /** 第三方 SMBJ 对象只存在于此边界内部。 */
 interface SmbShareSession : Closeable {
     val dialect: String
     val signingRequired: Boolean
-    fun list(path: String): Int
+    fun list(path: String): List<SmbDirectoryEntry>
+    fun openReadOnly(path: String): SmbFileHandle
 }
 
 fun interface SmbSessionBackend {
@@ -71,6 +89,7 @@ class SmbSessionManager(
 ) : RemoteSessionInvalidator, Closeable {
     private val permits = Semaphore(maxConcurrentOperations)
     private val active = ConcurrentHashMap<Long, MutableSet<SmbShareSession>>()
+    private val activeReads = ConcurrentHashMap<Long, MutableSet<SmbManagedRead>>()
 
     init {
         require(maxConcurrentOperations > 0) { "SMB 并发限制必须大于 0" }
@@ -82,7 +101,7 @@ class SmbSessionManager(
         val startedAt = System.currentTimeMillis()
         return execute(connection) { session ->
             val path = connection.rootPath.orEmpty().replace('/', '\\')
-            val count = runInterruptible(Dispatchers.IO) { session.list(path) }
+            val count = runInterruptible(Dispatchers.IO) { session.list(path).size }
             SmbConnectionReport(
                 entryCount = count,
                 dialect = session.dialect,
@@ -95,6 +114,68 @@ class SmbSessionManager(
                 "SMB 连接测试完成: connectionId=${connection.id}, dialect=${report.dialect}, " +
                     "entries=${report.entryCount}, elapsedMs=${report.elapsedMs}",
             )
+        }
+    }
+
+    /**
+     * 将只读文件流的生命周期转交给调用方。调用方必须 close；close 会释放 file、session 和并发许可。
+     */
+    suspend fun openReadOnly(
+        connection: RemoteConnectionEntity,
+        serverPath: String,
+    ): SmbManagedRead {
+        require(connection.type == RemoteType.SMB) { "连接类型不是 SMB" }
+        permits.acquire()
+        val credential = credentialStore.getCredential(connection.id)
+        if (credential == null) {
+            permits.release()
+            throw RemoteDataException(RemoteErrorCategory.AUTH_FAILED, "SMB 凭据缺失")
+        }
+        var session: SmbShareSession? = null
+        var file: SmbFileHandle? = null
+        var transferred = false
+        try {
+            withTimeout(operationTimeoutMs) {
+                runInterruptible(Dispatchers.IO) {
+                    session = backend.open(connection, credential).also { opened ->
+                        register(connection.id, opened)
+                    }
+                    file = checkNotNull(session).openReadOnly(serverPath)
+                }
+            }
+            val managed = SmbManagedRead(checkNotNull(file)) {
+                val opened = checkNotNull(session)
+                unregisterRead(connection.id, it)
+                unregister(connection.id, opened)
+                runCatching { opened.close() }
+                permits.release()
+                AppLogger.d(TAG, "SMB 读取资源已关闭: connectionId=${connection.id}, active=${activeCount()}")
+            }
+            registerRead(connection.id, managed)
+            transferred = true
+            return managed
+        } catch (timeout: TimeoutCancellationException) {
+            AppLogger.e(TAG, "SMB 文件打开超时: connectionId=${connection.id}, category=TIMEOUT")
+            throw RemoteDataException(RemoteErrorCategory.TIMEOUT, "SMB 文件打开超时", timeout)
+        } catch (cancelled: CancellationException) {
+            AppLogger.i(TAG, "SMB 文件打开取消: connectionId=${connection.id}, category=CANCELLED")
+            throw cancelled
+        } catch (error: RemoteDataException) {
+            throw error
+        } catch (error: Throwable) {
+            val mapped = SmbErrorMapper.exception(error)
+            AppLogger.e(TAG, "SMB 文件打开失败: connectionId=${connection.id}, category=${mapped.category}")
+            throw mapped
+        } finally {
+            credential.fill('\u0000')
+            if (!transferred) {
+                withContext(NonCancellable + Dispatchers.IO) { runCatching { file?.close() } }
+                session?.let { opened ->
+                    unregister(connection.id, opened)
+                    withContext(NonCancellable + Dispatchers.IO) { runCatching { opened.close() } }
+                }
+                permits.release()
+            }
         }
     }
 
@@ -139,6 +220,7 @@ class SmbSessionManager(
     }
 
     override fun invalidate(connectionId: Long) {
+        activeReads.remove(connectionId)?.toList().orEmpty().forEach { runCatching { it.close() } }
         val sessions = active.remove(connectionId)?.toList().orEmpty()
         sessions.forEach { runCatching { it.close() } }
         if (sessions.isNotEmpty()) {
@@ -166,8 +248,35 @@ class SmbSessionManager(
         }
     }
 
+    private fun registerRead(connectionId: Long, read: SmbManagedRead) {
+        activeReads.computeIfAbsent(connectionId) {
+            Collections.synchronizedSet(mutableSetOf())
+        }.add(read)
+    }
+
+    private fun unregisterRead(connectionId: Long, read: SmbManagedRead) {
+        activeReads[connectionId]?.let { reads ->
+            reads.remove(read)
+            if (reads.isEmpty()) activeReads.remove(connectionId, reads)
+        }
+    }
+
     private companion object {
         const val TAG = "SmbSessionManager"
+    }
+}
+
+class SmbManagedRead internal constructor(
+    private val file: SmbFileHandle,
+    private val onClosed: (SmbManagedRead) -> Unit,
+) : Closeable {
+    private val closed = AtomicBoolean(false)
+    val inputStream: InputStream get() = file.inputStream
+
+    override fun close() {
+        if (!closed.compareAndSet(false, true)) return
+        runCatching { file.close() }
+        onClosed(this)
     }
 }
 
@@ -229,7 +338,46 @@ private class SmbjShareSession(
     private val closed = AtomicBoolean(false)
     override val signingRequired: Boolean = session.isSigningRequired
 
-    override fun list(path: String): Int = share.list(path).size
+    override fun list(path: String): List<SmbDirectoryEntry> = share.list(path).map { entry ->
+        val attributes = entry.fileAttributes
+        SmbDirectoryEntry(
+            name = entry.fileName,
+            isDirectory = attributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value != 0L,
+            isReparsePoint = attributes and FileAttributes.FILE_ATTRIBUTE_REPARSE_POINT.value != 0L,
+            size = entry.endOfFile.coerceAtLeast(0L),
+            lastModified = entry.lastWriteTime.toEpochMillis().coerceAtLeast(0L),
+        )
+    }
+
+    override fun openReadOnly(path: String): SmbFileHandle {
+        val remoteFile = share.openFile(
+            path,
+            SmbReadOnlyAccess.fileAccess,
+            EnumSet.noneOf(FileAttributes::class.java),
+            SmbReadOnlyAccess.shareAccess,
+            SMB2CreateDisposition.FILE_OPEN,
+            setOf(
+                SMB2CreateOptions.FILE_NON_DIRECTORY_FILE,
+                SMB2CreateOptions.FILE_SEQUENTIAL_ONLY,
+            ),
+        )
+        return try {
+            val stream = remoteFile.inputStream
+            object : SmbFileHandle {
+                private val handleClosed = AtomicBoolean(false)
+                override val inputStream: InputStream = stream
+
+                override fun close() {
+                    if (!handleClosed.compareAndSet(false, true)) return
+                    runCatching { stream.close() }
+                    runCatching { remoteFile.close() }
+                }
+            }
+        } catch (error: Throwable) {
+            runCatching { remoteFile.close() }
+            throw error
+        }
+    }
 
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
