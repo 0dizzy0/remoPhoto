@@ -138,7 +138,7 @@ CI 或其他开发环境也可以使用 `REMOPHOTO_RELEASE_STORE_FILE`、`REMOPH
 
 ## 安全边界
 
-远程仓库当前使用明文 HTTP，仅用于受信任的同一局域网。不要在公共 Wi-Fi 或公网暴露远程服务。提交日志前请移除完整文件路径、相册名、设备 IP 等敏感信息。
+远程仓库仅用于用户主动配置的可信局域网：remoPhoto 设备间协议使用明文 HTTP，PC/NAS 只读访问使用 SMB2/3。不要在公共 Wi-Fi 或公网暴露服务，也不要为兼容旧设备启用 SMB1。SMB 密码只保存在 Android Keystore，不进入 Room 或应用内备份。提交日志前请移除完整文件路径、相册名、设备 IP、共享名和用户名等敏感信息。
 
 系统云备份和设备迁移不会自动复制应用数据库、设置或连接元信息；数据迁移应使用应用内导入导出。Release 构建关闭 Logcat 和 DEBUG 文件日志，并统一脱敏 URI、路径、IP 与用户自定义名称。
 
@@ -156,4 +156,4 @@ CI 或其他开发环境也可以使用 `REMOPHOTO_RELEASE_STORE_FILE`、`REMOPH
 
 ## 开源许可
 
-本项目采用 [MIT License](LICENSE)。
+本项目采用 [MIT License](LICENSE)。SMB 功能新增的运行时依赖及许可证见 [第三方依赖声明](THIRD_PARTY_NOTICES.md)。

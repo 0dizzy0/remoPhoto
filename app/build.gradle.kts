@@ -161,6 +161,11 @@ dependencies {
 
     // SMB2/3 只读客户端；Android/R8 兼容性已在独立 Spike 中验证。
     implementation("com.hierynomus:smbj:0.14.0")
+    constraints {
+        implementation("org.bouncycastle:bcprov-jdk18on:1.84") {
+            because("CVE-2026-0636 affects bcprov-jdk18on 1.74 through 1.83")
+        }
+    }
 
     // SplashScreen
     implementation("androidx.core:core-splashscreen:1.0.1")

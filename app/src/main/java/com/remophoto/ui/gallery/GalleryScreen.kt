@@ -82,7 +82,7 @@ fun GalleryScreen(
     Box(modifier = Modifier
         .fillMaxSize()
         .onGloballyPositioned { coords ->
-            AppLogger.i(TAG, "🖼️ 外层Box: size=${coords.size}, isAttached=${coords.isAttached}")
+            AppLogger.d(TAG, "🖼️ 外层Box: size=${coords.size}, isAttached=${coords.isAttached}")
         }
     ) {
         // 内容区（TopAppBar 64dp + 状态栏区域由 edge-to-edge 处理）
@@ -90,7 +90,7 @@ fun GalleryScreen(
             .fillMaxSize()
             .padding(top = 64.dp)
             .onGloballyPositioned { coords ->
-                AppLogger.i(TAG, "📦 内容区: size=${coords.size}, isAttached=${coords.isAttached}")
+                AppLogger.d(TAG, "📦 内容区: size=${coords.size}, isAttached=${coords.isAttached}")
             }
         ) {
             when {
@@ -118,7 +118,7 @@ fun GalleryScreen(
                     Box(modifier = Modifier
                         .fillMaxSize()
                         .onGloballyPositioned { coords ->
-                            AppLogger.i(TAG, "📦 网格区域: size=${coords.size}")
+                            AppLogger.d(TAG, "📦 网格区域: size=${coords.size}")
                         }
                     ) {
                         LazyVerticalGrid(
@@ -211,7 +211,7 @@ fun GalleryScreen(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .onGloballyPositioned { coords ->
-                    AppLogger.i(TAG, "📐 TopAppBar: size=${coords.size}, isAttached=${coords.isAttached}")
+                    AppLogger.d(TAG, "📐 TopAppBar: size=${coords.size}, isAttached=${coords.isAttached}")
                 },
             title = {
                 Column {

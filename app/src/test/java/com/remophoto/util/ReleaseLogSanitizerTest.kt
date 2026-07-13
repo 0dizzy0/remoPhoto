@@ -68,6 +68,21 @@ class ReleaseLogSanitizerTest {
     }
 
     @Test
+    fun `redacts complete unquoted names containing spaces and punctuation`() {
+        val sanitized = ReleaseLogSanitizer.sanitize(
+            "点击相册卡片: id=7, " +
+                "name=primary:Pictures/123-(C90) [私人相册 标题], children=0\n" +
+                "returnRoute=album_list?repoId=4&repoName=客厅 图库(旧版)"
+        )
+
+        assertFalse(sanitized.contains("私人相册"))
+        assertFalse(sanitized.contains("客厅 图库"))
+        assertTrue(sanitized.contains("name=<redacted>"))
+        assertTrue(sanitized.contains("repoName=<redacted>"))
+        assertTrue(sanitized.contains("children=0"))
+    }
+
+    @Test
     fun `redacts category labels and keeps category counters`() {
         val sanitized = ReleaseLogSanitizer.sanitize(
             "categoryName=Family Trips, category=\"Private Collection\"(id=2), " +
