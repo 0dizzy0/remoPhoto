@@ -100,7 +100,7 @@ class SmbSessionManager(
         require(connection.type == RemoteType.SMB) { "连接类型不是 SMB" }
         val startedAt = System.currentTimeMillis()
         return execute(connection) { session ->
-            val path = connection.rootPath.orEmpty().replace('/', '\\')
+            val path = SmbPathCodec.serverPath(connection.rootPath, relativePath = "")
             val count = runInterruptible(Dispatchers.IO) { session.list(path).size }
             SmbConnectionReport(
                 entryCount = count,
@@ -116,6 +116,79 @@ class SmbSessionManager(
             )
         }
     }
+
+    /**
+     * 使用尚未落盘的临时凭据测试 SMB 配置。该方法会在返回前清零 [credential]，
+     * 用于“测试通过后才保存”的添加与重新认证流程。
+     */
+    suspend fun testConnection(
+        connection: RemoteConnectionEntity,
+        credential: CharArray,
+    ): SmbConnectionReport {
+        require(connection.type == RemoteType.SMB) { "连接类型不是 SMB" }
+        require(credential.isNotEmpty()) { "SMB 密码不能为空" }
+        val startedAt = System.currentTimeMillis()
+        return executeWithCredential(connection, credential, "连接测试") { session ->
+            val path = SmbPathCodec.serverPath(connection.rootPath, relativePath = "")
+            val count = runInterruptible(Dispatchers.IO) { session.list(path).size }
+            SmbConnectionReport(
+                entryCount = count,
+                dialect = session.dialect,
+                signingRequired = session.signingRequired,
+                elapsedMs = System.currentTimeMillis() - startedAt,
+            )
+        }.also { report ->
+            AppLogger.i(
+                TAG,
+                "SMB 临时配置测试完成: dialect=${report.dialect}, entries=${report.entryCount}, " +
+                    "elapsedMs=${report.elapsedMs}",
+            )
+        }
+    }
+
+    /**
+     * 使用尚未保存的配置列出指定目录的直属子目录，供添加仓库时选择相册根目录。
+     * 密码仅在本次调用中使用，并在返回前清零。
+     */
+    suspend fun listDirectories(
+        connection: RemoteConnectionEntity,
+        credential: CharArray,
+        relativePath: String,
+    ): List<SmbDirectoryEntry> {
+        require(connection.type == RemoteType.SMB) { "连接类型不是 SMB" }
+        require(credential.isNotEmpty()) { "SMB 密码不能为空" }
+        return executeWithCredential(connection, credential, "目录浏览") { session ->
+            val serverPath = SmbPathCodec.serverPath(connection.rootPath, relativePath)
+            listChildDirectories(session, serverPath)
+        }
+    }
+
+    /** 使用已安全保存的凭据浏览现有 SMB 仓库。 */
+    suspend fun listDirectories(
+        connection: RemoteConnectionEntity,
+        relativePath: String,
+    ): List<SmbDirectoryEntry> = execute(connection.copy(rootPath = null)) { session ->
+        val serverPath = SmbPathCodec.serverPath(rootPath = null, relativePath = relativePath)
+        listChildDirectories(session, serverPath)
+    }
+
+    private suspend fun listChildDirectories(
+        session: SmbShareSession,
+        serverPath: String,
+    ): List<SmbDirectoryEntry> = runInterruptible(Dispatchers.IO) { session.list(serverPath) }
+        .asSequence()
+        .filter { it.isDirectory && !it.isReparsePoint && it.name != "." && it.name != ".." }
+        .sortedBy { it.name.lowercase() }
+        .toList()
+
+    /**
+     * 长目录扫描只限制建连时长；SMBJ 自身对每次 list 请求设置 socket 超时。
+     * 不能对整个扫描设置固定 30 秒上限，否则大型图库必然在多轮重试后失败。
+     */
+    internal suspend fun <T> executeCatalogScan(
+        connection: RemoteConnectionEntity,
+        block: suspend (SmbShareSession) -> T,
+    ): T = executeInternal(connection, timeoutWholeBlock = false, block = block)
 
     /**
      * 将只读文件流的生命周期转交给调用方。调用方必须 close；close 会释放 file、session 和并发许可。
@@ -182,12 +255,18 @@ class SmbSessionManager(
     internal suspend fun <T> execute(
         connection: RemoteConnectionEntity,
         block: suspend (SmbShareSession) -> T,
+    ): T = executeInternal(connection, timeoutWholeBlock = true, block = block)
+
+    private suspend fun <T> executeInternal(
+        connection: RemoteConnectionEntity,
+        timeoutWholeBlock: Boolean,
+        block: suspend (SmbShareSession) -> T,
     ): T = permits.withPermit {
         val credential = credentialStore.getCredential(connection.id)
             ?: throw RemoteDataException(RemoteErrorCategory.AUTH_FAILED, "SMB 凭据缺失")
         var session: SmbShareSession? = null
         try {
-            withTimeout(operationTimeoutMs) {
+            suspend fun openSession() = withTimeout(operationTimeoutMs) {
                 runInterruptible(Dispatchers.IO) {
                     // 在可取消边界内部先登记，避免 open 已成功但结果因取消被丢弃而泄漏。
                     backend.open(connection, credential).also { opened ->
@@ -195,8 +274,10 @@ class SmbSessionManager(
                         register(connection.id, opened)
                     }
                 }
-                block(checkNotNull(session))
             }
+            openSession()
+            if (timeoutWholeBlock) withTimeout(operationTimeoutMs) { block(checkNotNull(session)) }
+            else block(checkNotNull(session))
         } catch (timeout: TimeoutCancellationException) {
             AppLogger.e(TAG, "SMB 操作超时: connectionId=${connection.id}, category=TIMEOUT")
             throw RemoteDataException(RemoteErrorCategory.TIMEOUT, "SMB 操作超时", timeout)
@@ -218,6 +299,52 @@ class SmbSessionManager(
             }
         }
     }
+
+    private suspend fun <T> executeWithCredential(
+        connection: RemoteConnectionEntity,
+        credential: CharArray,
+        operation: String,
+        block: suspend (SmbShareSession) -> T,
+    ): T {
+        var session: SmbShareSession? = null
+        var permitAcquired = false
+        return try {
+            permits.acquire()
+            permitAcquired = true
+            withTimeout(operationTimeoutMs) {
+                runInterruptible(Dispatchers.IO) {
+                    backend.open(connection, credential).also { opened ->
+                        session = opened
+                        register(connection.id, opened)
+                    }
+                }
+                block(checkNotNull(session))
+            }
+        } catch (timeout: TimeoutCancellationException) {
+            AppLogger.e(TAG, "SMB $operation 超时: category=TIMEOUT")
+            throw RemoteDataException(RemoteErrorCategory.TIMEOUT, "SMB $operation 超时", timeout)
+        } catch (cancelled: CancellationException) {
+            AppLogger.i(TAG, "SMB $operation 取消: category=CANCELLED")
+            throw cancelled
+        } catch (error: RemoteDataException) {
+            throw error
+        } catch (error: Throwable) {
+            val mapped = SmbErrorMapper.exception(error)
+            AppLogger.e(TAG, "SMB $operation 失败: category=${mapped.category}, cause=${safeCause(error)}")
+            throw mapped
+        } finally {
+            credential.fill('\u0000')
+            session?.let { opened ->
+                unregister(connection.id, opened)
+                withContext(NonCancellable + Dispatchers.IO) { runCatching { opened.close() } }
+            }
+            if (permitAcquired) permits.release()
+        }
+    }
+
+    private fun safeCause(error: Throwable): String = generateSequence(error) { it.cause }
+        .take(4)
+        .joinToString(">") { it.javaClass.simpleName.ifBlank { "Throwable" } }
 
     override fun invalidate(connectionId: Long) {
         activeReads.remove(connectionId)?.toList().orEmpty().forEach { runCatching { it.close() } }

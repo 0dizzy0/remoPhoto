@@ -93,7 +93,13 @@ class SyncSmbRepositoryInstrumentedTest {
     fun successfulRefreshKeepsStableAlbumsAndAppliesRemoteDeletion() = runBlocking {
         val first = useCase.execute(connection, repositoryId)
         val firstAlbums = database.albumDao().getAlbumsByRepositoryList(repositoryId)
-        val rootId = firstAlbums.single { SmbPathCodec.parseAlbumStorageValue(it.directoryPath)?.relativeDirectory == "" }.id
+        val rootImagesAlbum = firstAlbums.single {
+            SmbPathCodec.parseAlbumStorageValue(it.directoryPath)?.relativeDirectory == ""
+        }
+        val childId = firstAlbums.single {
+            SmbPathCodec.parseAlbumStorageValue(it.directoryPath)?.relativeDirectory == "child"
+        }.id
+        assertEquals(SmbCatalogScanner.ROOT_IMAGES_ALBUM_NAME, rootImagesAlbum.name)
         assertEquals(2, first.imageCount)
 
         fixture.tree.set(
@@ -104,11 +110,18 @@ class SyncSmbRepositoryInstrumentedTest {
         )
         val second = useCase.execute(connection, repositoryId)
         val secondAlbums = database.albumDao().getAlbumsByRepositoryList(repositoryId)
-        val secondRootId = secondAlbums.single { SmbPathCodec.parseAlbumStorageValue(it.directoryPath)?.relativeDirectory == "" }.id
+        val secondChildId = secondAlbums.single {
+            SmbPathCodec.parseAlbumStorageValue(it.directoryPath)?.relativeDirectory == "child"
+        }.id
         val images = database.imageDao().getImagesByRepository(repositoryId)
 
         assertEquals(1, second.imageCount)
-        assertEquals(rootId, secondRootId)
+        assertEquals(childId, secondChildId)
+        assertTrue(
+            secondAlbums.none {
+                SmbPathCodec.parseAlbumStorageValue(it.directoryPath)?.relativeDirectory == ""
+            }
+        )
         assertEquals(listOf("new.webp"), images.map { it.fileName })
         assertTrue(images.single().filePath.startsWith("smb-media://"))
         assertEquals(1, database.repositoryDao().getRepositoryById(repositoryId)?.imageCount)

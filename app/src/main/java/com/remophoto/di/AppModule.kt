@@ -15,6 +15,7 @@ import com.remophoto.data.remote.RemoteSourceRouter
 import com.remophoto.data.remote.smb.SmbSessionManager
 import com.remophoto.data.remote.smb.SmbCatalogScanner
 import com.remophoto.data.remote.smb.SmbMediaResolver
+import com.remophoto.data.remote.smb.SmbLanDiscovery
 import com.remophoto.data.remote.smb.SmbRemoteCatalogSource
 import com.remophoto.data.remote.smb.SmbRepositoryExternalCleaner
 import com.remophoto.data.repository.AlbumRepository
@@ -113,6 +114,8 @@ class DependencyContainer(private val app: RemoPhotoApp) {
     val smbSessionManager: SmbSessionManager by lazy {
         SmbSessionManager(keyStoreManager)
     }
+
+    val smbLanDiscovery: SmbLanDiscovery by lazy { SmbLanDiscovery(app) }
 
     val smbCatalogScanner: SmbCatalogScanner by lazy {
         SmbCatalogScanner(smbSessionManager)

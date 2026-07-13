@@ -45,6 +45,46 @@ class SmbSessionManagerTest {
     }
 
     @Test
+    fun `temporary connection test never reads store and clears supplied credential`() = runBlocking {
+        val credentials = RecordingCredentialStore()
+        val supplied = "temporary-secret".toCharArray()
+        val share = FakeShareSession()
+        val manager = SmbSessionManager(credentials, SmbSessionBackend { _, credential ->
+            assertEquals("temporary-secret", credential.concatToString())
+            share
+        })
+
+        val report = manager.testConnection(connection().copy(id = 0L), supplied)
+
+        assertEquals(3, report.entryCount)
+        assertTrue(supplied.all { it == '\u0000' })
+        assertTrue(share.closed.get())
+        assertEquals(null, credentials.lastReturned)
+        assertEquals(0, manager.activeCount())
+    }
+
+    @Test
+    fun `directory browsing filters files and clears supplied credential`() = runBlocking {
+        val credentials = RecordingCredentialStore()
+        val supplied = "temporary-secret".toCharArray()
+        val share = object : SmbShareSession by FakeShareSession() {
+            override fun list(path: String): List<SmbDirectoryEntry> = listOf(
+                SmbDirectoryEntry("album", true, false, 0, 1),
+                SmbDirectoryEntry("junction", true, true, 0, 1),
+                SmbDirectoryEntry("image.jpg", false, false, 1, 1),
+            )
+        }
+        val manager = SmbSessionManager(credentials, SmbSessionBackend { _, _ -> share })
+
+        val directories = manager.listDirectories(connection().copy(id = 0L), supplied, "")
+
+        assertEquals(listOf("album"), directories.map { it.name })
+        assertTrue(supplied.all { it == '\u0000' })
+        assertEquals(null, credentials.lastReturned)
+        assertEquals(0, manager.activeCount())
+    }
+
+    @Test
     fun `timeout is classified and closes active session`() = runBlocking {
         val share = FakeShareSession(listDelayMs = 10_000L)
         val manager = SmbSessionManager(

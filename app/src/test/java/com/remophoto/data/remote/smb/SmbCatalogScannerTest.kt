@@ -48,7 +48,9 @@ class SmbCatalogScannerTest {
         assertEquals(2, snapshot.imageCount)
         assertEquals(3, snapshot.albums.size)
         assertEquals(listOf("", "父目录", "父目录/子 目录"), snapshot.albums.map { it.relativePath })
+        assertEquals(listOf("未分类图片", "父目录", "子 目录"), snapshot.albums.map { it.name })
         assertEquals(listOf(1, 0, 1), snapshot.albums.map { it.imageCount })
+        assertEquals(listOf(null, null, "父目录"), snapshot.albums.map { it.parentRelativePath })
         assertEquals(1, snapshot.skippedReparsePoints)
         val records = mutableListOf<SmbSpoolMediaRecord>()
         SmbCatalogScanner.readSpool(spool, records::add)
@@ -76,6 +78,25 @@ class SmbCatalogScannerTest {
     }
 
     @Test
+    fun `does not expose empty scan root as an album`() = runBlocking {
+        val share = TreeShareSession(
+            mapOf(
+                "photos" to listOf(directory("相册 A")),
+                "photos\\相册 A" to listOf(file("image.jpg", 10, 100)),
+            )
+        )
+        val spool = Files.createTempFile("smb-no-root-album", ".bin").toFile()
+
+        val snapshot = SmbCatalogScanner(manager(share)).scanToSpool(connection(), spool)
+
+        assertEquals(listOf("相册 A"), snapshot.albums.map { it.name })
+        assertEquals(listOf("相册 A"), snapshot.albums.map { it.relativePath })
+        assertEquals(listOf(null), snapshot.albums.map { it.parentRelativePath })
+        spool.delete()
+        Unit
+    }
+
+    @Test
     fun `spools ten thousand images without retaining media records`() = runBlocking {
         val entries = List(10_001) { index -> file("image-$index.jpg", index.toLong(), index.toLong()) }
         val share = TreeShareSession(mapOf("photos" to entries))
@@ -89,6 +110,31 @@ class SmbCatalogScannerTest {
         assertEquals(1, snapshot.albums.size)
         assertEquals(10_001, recordCount)
         assertTrue(spool.length() > 0L)
+        spool.delete()
+        Unit
+    }
+
+    @Test
+    fun `catalog scan is not limited by connection operation timeout`() = runBlocking {
+        val share = TreeShareSession(
+            entriesByPath = mapOf(
+                "photos" to listOf(directory("album")),
+                "photos\\album" to listOf(file("image.jpg", 1, 1)),
+            ),
+            listDelayMs = 35L,
+        )
+        val manager = SmbSessionManager(
+            credentialStore = FixedCredentialStore(),
+            backend = SmbSessionBackend { _, _ -> share },
+            operationTimeoutMs = 50L,
+        )
+        val spool = Files.createTempFile("smb-long-catalog", ".bin").toFile()
+
+        val snapshot = SmbCatalogScanner(manager).scanToSpool(connection(), spool)
+
+        assertEquals(1, snapshot.imageCount)
+        assertEquals(2, snapshot.checkedDirectories)
+        assertTrue(share.closed.get())
         spool.delete()
         Unit
     }
@@ -126,13 +172,16 @@ private class FixedCredentialStore : CredentialStore {
 
 private class TreeShareSession(
     private val entriesByPath: Map<String, List<SmbDirectoryEntry>>,
+    private val listDelayMs: Long = 0L,
 ) : SmbShareSession {
     val closed = AtomicBoolean(false)
     override val dialect = "SMB_3_1_1"
     override val signingRequired = true
 
-    override fun list(path: String): List<SmbDirectoryEntry> =
-        entriesByPath[path] ?: error("unexpected path")
+    override fun list(path: String): List<SmbDirectoryEntry> {
+        if (listDelayMs > 0) Thread.sleep(listDelayMs)
+        return entriesByPath[path] ?: error("unexpected path")
+    }
 
     override fun openReadOnly(path: String): SmbFileHandle = object : SmbFileHandle {
         override val inputStream = ByteArrayInputStream(byteArrayOf())

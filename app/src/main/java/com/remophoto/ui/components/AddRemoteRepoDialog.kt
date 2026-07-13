@@ -34,7 +34,7 @@ import kotlinx.coroutines.withContext
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddRemoteRepoDialog(
+internal fun RemoPhotoRepoDialog(
     onDismiss: () -> Unit,
     onRepoAdded: () -> Unit
 ) {

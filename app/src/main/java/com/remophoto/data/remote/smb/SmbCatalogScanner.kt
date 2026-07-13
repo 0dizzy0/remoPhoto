@@ -82,7 +82,7 @@ class SmbCatalogScanner(
         try {
             val countingOutput = CountingOutputStream(BufferedOutputStream(spoolFile.outputStream()))
             DataOutputStream(countingOutput).use { output ->
-                sessionManager.execute(connection) { session ->
+                sessionManager.executeCatalogScan(connection) { session ->
                     val queue = ArrayDeque<QueuedDirectory>()
                     queue.add(QueuedDirectory(relativePath = "", name = connection.displayName, depth = 0))
                     stateByPath[""] = MutableDirectoryState(connection.displayName, null, 0)
@@ -98,7 +98,8 @@ class SmbCatalogScanner(
                         totalEntries += entries.size
                         if (totalEntries > limits.maxEntries) resourceLimit()
 
-                        for (entry in entries.sortedBy { it.name }) {
+                        // SMBJ 已为当前目录构造条目列表；直接单遍消费，避免大型目录再次复制和排序。
+                        for (entry in entries) {
                             coroutineContext.ensureActive()
                             if (entry.name == "." || entry.name == "..") continue
                             val name = SmbPathCodec.validateEntryName(entry.name)
@@ -140,6 +141,9 @@ class SmbCatalogScanner(
                                 }
                                 imageCount++
                                 if (countingOutput.count > limits.maxSpoolBytes) resourceLimit()
+                                if (imageCount % PROGRESS_IMAGE_INTERVAL == 0) {
+                                    onProgress(checkedDirectories, imageCount)
+                                }
                             }
                         }
                         if (checkedDirectories % PROGRESS_DIRECTORY_INTERVAL == 0) {
@@ -166,11 +170,17 @@ class SmbCatalogScanner(
                 }
             }
             val albums = stateByPath.mapNotNull { (path, state) ->
-                if (state.ownImageCount == 0 && !state.descendantHasImages) return@mapNotNull null
+                // 扫描起点是仓库边界，不是用户创建的相册：不生成“根目录”占位项。
+                // 若起点直接包含图片，则使用清晰的虚拟相册承载，避免根级图片丢失。
+                if (path.isEmpty() && state.ownImageCount == 0) return@mapNotNull null
+                if (path.isNotEmpty() && state.ownImageCount == 0 && !state.descendantHasImages) {
+                    return@mapNotNull null
+                }
                 SmbAlbumSnapshot(
                     relativePath = path,
-                    name = state.name.ifBlank { "根目录" },
-                    parentRelativePath = state.parentPath,
+                    name = if (path.isEmpty()) ROOT_IMAGES_ALBUM_NAME else state.name,
+                    // 共享根目录不再是相册，直属目录应直接成为仓库顶层相册。
+                    parentRelativePath = state.parentPath?.takeIf(String::isNotEmpty),
                     imageCount = state.ownImageCount,
                     lastModified = state.lastModified,
                     coverOpaqueKey = state.coverOpaqueKey,
@@ -202,6 +212,8 @@ class SmbCatalogScanner(
     companion object {
         private const val TAG = "SmbCatalogScanner"
         private const val PROGRESS_DIRECTORY_INTERVAL = 10
+        private const val PROGRESS_IMAGE_INTERVAL = 500
+        internal const val ROOT_IMAGES_ALBUM_NAME = "未分类图片"
 
         fun readSpool(file: File, block: (SmbSpoolMediaRecord) -> Unit) {
             DataInputStream(BufferedInputStream(file.inputStream())).use { input ->

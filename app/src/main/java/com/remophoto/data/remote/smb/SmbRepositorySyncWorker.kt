@@ -22,6 +22,7 @@ import com.remophoto.MainActivity
 import com.remophoto.R
 import com.remophoto.RemoPhotoApp
 import com.remophoto.data.local.entity.RemoteType
+import com.remophoto.data.remote.RemoteDataException
 import com.remophoto.util.AppLogger
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
@@ -88,12 +89,15 @@ class SmbRepositorySyncWorker(
             throw cancelled
         } catch (error: Throwable) {
             val retry = SmbSyncRetryPolicy.shouldRetry(error, runAttemptCount)
+            val category = (error as? RemoteDataException)?.category?.name
+                ?: SmbErrorMapper.category(error).name
             AppLogger.e(
                 TAG,
                 "SMB 后台刷新失败: work=$id, connectionId=$connectionId, repositoryId=$repositoryId, " +
-                    "attempt=${runAttemptCount + 1}, retry=$retry, category=${error.javaClass.simpleName}",
+                    "attempt=${runAttemptCount + 1}, retry=$retry, category=$category, " +
+                    "cause=${error.javaClass.simpleName}",
             )
-            if (retry) Result.retry() else Result.failure(errorData(error.javaClass.simpleName))
+            if (retry) Result.retry() else Result.failure(errorData(category))
         }
     }
 

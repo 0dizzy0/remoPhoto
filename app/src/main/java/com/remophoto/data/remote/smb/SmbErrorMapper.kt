@@ -2,6 +2,7 @@ package com.remophoto.data.remote.smb
 
 import com.hierynomus.mserref.NtStatus
 import com.hierynomus.mssmb2.SMBApiException
+import com.hierynomus.protocol.transport.TransportException
 import com.remophoto.data.remote.RemoteDataException
 import com.remophoto.data.remote.RemoteErrorCategory
 import java.net.ConnectException
@@ -20,6 +21,7 @@ object SmbErrorMapper {
                 RemoteErrorCategory.TIMEOUT
             chain.any { it is UnknownHostException || it is ConnectException || it is NoRouteToHostException } ->
                 RemoteErrorCategory.HOST_UNREACHABLE
+            chain.any { it is TransportException } -> RemoteErrorCategory.HOST_UNREACHABLE
             else -> RemoteErrorCategory.UNKNOWN
         }
     }
