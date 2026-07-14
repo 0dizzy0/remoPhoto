@@ -1,6 +1,6 @@
 # ADR-005：Android SMB 客户端库选型
 
-状态：**有条件接受（已进入正式模块，M5 兼容矩阵尚未收口）**
+状态：**接受（M5 兼容矩阵已收口）**
 
 日期：2026-07-12
 
@@ -28,10 +28,11 @@ remoPhoto `0.2.0` 计划增加可信局域网内的 SMB2/3 只读仓库。客户
 - Spike 调用链实际引用 `SMBClient`、NTLM `AuthenticationContext`、connection、session、`DiskShare.list()` 和各级 `use/close`，避免 R8 因无引用直接裁掉 SMBJ。
 - 正式模块已完成 Android 12/16 instrumentation、Android 12 到 Windows SMB3 的认证、中文目录枚举、8448/155794 张图片扫描、静态图/GIF 读取、断线恢复、凭据替换和仓库删除回归。
 - 2026-07-13 供应链复核发现 SMBJ 间接解析的 Bouncy Castle `1.79` 受 CVE-2026-0636 影响；应用使用 Gradle constraint 固定到公告修复版 `1.84`。Debug、AndroidTest、minified Release/R8、API 31/36 instrumentation 与 Windows SMB 刷新均在升级后重新通过。
+- 2026-07-15 补齐 API 29 Pixel 3 AVD 与 WSL2 Samba 4.19.5：Debug/minified Release 的认证、中文目录、30 张索引、静态图/GIF、异常矩阵和无人值守 Smoke 均通过。NT1-only Samba 在协商阶段稳定映射为 `UNSUPPORTED_DIALECT`，客户端未启用 SMB1。
 
 ## 当前决定
 
-保留 SMBJ `0.14.0` 作为正式 SMB2/3 客户端，不因 Bouncy Castle 修复升级 SMBJ。M2～M4 已完成，以下未覆盖项继续作为 M5 上线门禁：
+保留 SMBJ `0.14.0` 作为正式 SMB2/3 客户端，不因 Bouncy Castle 修复升级 SMBJ。以下 M5 门禁均已完成：
 
 1. API 29 和一台较新 Android 真机完成 Debug 与 minified Release 安装、冷启动、NTLM 认证、中文目录枚举和图片流读取。
 2. Windows SMB3 与 Samba/NAS 均完成互通，并记录协商 dialect、签名和加密状态。
@@ -41,9 +42,9 @@ remoPhoto `0.2.0` 计划增加可信局域网内的 SMB2/3 只读仓库。客户
 
 ## 已知风险
 
-- Windows SMB3、API 31 和 API 36 已有运行时证据；API 29 与 Samba/NAS 尚未完成，不能把现有结果外推到未测矩阵。
+- Windows SMB3、Samba 4.19.5、API 29、API 31 和 API 36 已有运行时证据；未验证特定商业 NAS 的厂商扩展，不将该结果外推为所有 NAS 型号兼容。
 - `org.ietf.jgss` 在 Android 缺失意味着当前方案不能支持 Kerberos；这与 MVP 排除项一致。
-- Bouncy Castle 是主要包体来源之一；当前 Release APK 为 5,802,452 字节，后续升级继续记录包体和 R8 结果。
+- Bouncy Castle 是主要包体来源之一；M5 最终 Release APK 为 5,818,836 字节，后续升级继续记录包体和 R8 结果。
 - Release R8 规则需要随 SMBJ 升级重新生成和复核，不能永久复制旧规则。
 - SMB 签名策略和 SMBJ 上游断线线程 issue 按维护者决定暂不作为当前门禁；等待上游补丁后单独升级和回归，不在业务层加入侵入式补丁。
 

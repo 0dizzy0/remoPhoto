@@ -206,8 +206,7 @@ class DatabaseImportRollbackTest {
         categoryId: Long
     ) {
         target.delete()
-        val escapedPath = target.absolutePath.replace("'", "''")
-        database.openHelper.writableDatabase.execSQL("VACUUM INTO '$escapedPath'")
+        DatabaseExporter.createSnapshot(context, database, target)
         SQLiteDatabase.openDatabase(
             target.absolutePath,
             null,
@@ -222,8 +221,7 @@ class DatabaseImportRollbackTest {
 
     private fun createVersion4Database(database: AppDatabase, target: File) {
         target.delete()
-        val escapedPath = target.absolutePath.replace("'", "''")
-        database.openHelper.writableDatabase.execSQL("VACUUM INTO '$escapedPath'")
+        DatabaseExporter.createSnapshot(context, database, target)
         SQLiteDatabase.openDatabase(
             target.absolutePath,
             null,

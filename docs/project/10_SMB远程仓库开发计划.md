@@ -1,6 +1,6 @@
 # SMB 远程仓库开发计划
 
-更新时间：2026-07-13
+更新时间：2026-07-15
 
 开发分支：`codex/smb-support`
 
@@ -15,7 +15,7 @@
 - M2 **完成**：Room v5、规范化 `identity_key`、v4 迁移/备份导入、凭据生命周期与补偿、缺凭据恢复、SMB2/3 会话边界、并发/超时/取消、只读权限集、资源关闭及错误分类已实现；JVM 45/45、Android 12 真机迁移/导入/Keystore 4/4、Lint、Debug 与 minified Release 通过。API 29 与发布级完整门禁仍按决定保留到 M5。
 - M3 **完成**：已实现共享根/子目录递归快照、图片过滤、相册层级映射、磁盘 spool、批处理、事务原子切换、失败保留旧索引、SMB 媒体引用、Coil 静态图/GIF 读取、确定性缓存键、只读流资源释放、网络约束 WorkManager、有界重试和删除时定向清理。JVM、Android 12 真机 M3 集成、Lint 与 minified Release 均通过；正式 app 已在真实 Windows SMB 上完成 155,794 张图片扫描与原子索引切换，并完成分页、静态图和动画 GIF 浏览，M3 的“真实 10,000+ 仓库”退出证据已补齐。
 - M4 **完成**：添加远程仓库已提供 remoPhoto/SMB 协议选择；SMB 表单、局域网 mDNS + 445 端口兜底发现、手动填写、认证后目录浏览、已有仓库根目录修改、字段校验、临时凭据连接测试、测试失效、事务保存、首次后台刷新、状态与上次成功时间、手动刷新/取消、重新认证和删除均已接通。大型共享扫描不受整轮 30 秒连接超时约束，扫描起点不显示为“根目录”相册；错误和日志保持稳定分类与脱敏。JVM 64/64、Lint、Android 测试 APK、minified Release、Android 12 真机 SMB 集成 4/4 和 UI Smoke 均通过；真实 Windows SMB 已完成限定根目录 8448 张刷新、分页、静态图浏览，以及临时上移根目录后的 155,794 张全量扫描和动画 GIF 浏览。错误凭据重认证不会覆盖旧凭据，旧凭据可继续刷新；旋转和系统杀进程后非敏感表单状态恢复、密码清空。受控远端增删、独立仓库删除和有效新凭据重新认证均已闭环：服务端改密后强制新会话明确返回 `AUTH_FAILED`，重新认证成功后加密凭据确实替换，独立手动刷新仍保持 30 张图片与 `CONNECTED` 状态，日志未命中主机、共享名、用户名或密码标记。TalkBack 人工验收、remoPhoto HTTP 双机回归及其他明确延期项不计入 M4 门禁，M4 退出证据现已齐备。
-- M5 **进行中**：JVM 65/65、Lint、Android 测试 APK、minified Release/R8、API 31 与 API 36 instrumentation 各 12/12、Windows SMB3 8448 张真实刷新、HTTP 双机 268,871 张综合回归、Release 覆盖升级与日志隐私、100 张图片资源压力和 Crash/ANR 检查已通过。修复 Release 日志中布局噪声和未加引号名称的部分脱敏问题；将 SMBJ 间接依赖 `bcprov-jdk18on` 从受 CVE-2026-0636 影响的 `1.79` 约束到修复版 `1.84`，并完成双机与真实 SMB 回归。API 29 SMB 运行时、Samba/NAS、完整异常矩阵和单机无人值守 SMB Smoke 仍是 M5 剩余门禁；当前环境没有 API 29 AVD 或 Samba/NAS，不能以 API 31/36 和 Windows SMB 代替。
+- M5 **完成**：67/67 JVM、Lint、Android 测试 APK、minified Release/R8、API 29/31/36 instrumentation、Windows SMB3、WSL2 Samba 4.19.5、Debug/Release 中文目录与静态图/GIF、完整异常矩阵、单机无人值守 SMB Smoke、Release 隐私、Crash/ANR、许可证和 Bouncy Castle `1.84` 供应链门禁均通过。最终 API 29 Smoke 从临时共享同步 30 张，断线后保留旧索引，恢复后成功；远端新增到 31、删除回 30，最后删除应用仓库并恢复 Samba 配置。详细证据见 M5 验证记录。
 
 ## 1. 目标、范围与默认约定
 
@@ -242,11 +242,11 @@ interface RemoteMediaSource {
 - 补齐 M0 延后的 API 29、Samba/NAS、资源压力、异常矩阵、Release 隐私与许可证/CVE 门禁；这些是上线门禁，不在当前功能开发期间阻塞 M2～M4。
 - 更新 README、功能规格、架构 ADR、测试用例、第三方许可证、隐私说明和 Release Notes。
 
-当前进度（2026-07-13）：
+最终进度（2026-07-15）：
 
-- 已完成：65/65 JVM、Lint、Android 测试 APK、minified Release/R8；API 31/36 instrumentation 各 12/12；Windows SMB3 真实刷新；HTTP 双机发现、同步、断线恢复和大索引回归；Release 数据保留与日志隐私；100 张图片资源压力；Crash/ANR；SMB 依赖许可证清单；CVE-2026-0636 修复与回归。
-- 待完成：API 29 上的 SMB 运行时互通；Samba/NAS 互通；错误密码、SMB1-only、共享移除、权限不足、超时和取消的完整 M5 异常矩阵汇总；能够自行创建临时共享并输出单一 PASS/FAIL 的无人值守脚本；最终 README/规格/Release Notes 收口。
-- 环境限制：当前两台设备为 API 31 与 API 36，Android SDK 中无可启动 AVD；当前只有 Windows SMB 服务，没有 Samba/NAS。补齐环境后继续执行，不降低矩阵要求。
+- 已完成：67/67 JVM、Lint、Android 测试 APK、minified Release/R8；API 29/31/36 instrumentation 各 12/12；Windows SMB3 与 Samba 4.19.5；HTTP 双机；API 29 Debug/Release；异常矩阵；单一 PASS/FAIL 无人值守脚本；Release 隐私、Crash/ANR；许可证与 CVE-2026-0636 修复复核。
+- 环境说明：API 29 使用 Pixel 3 AVD；Samba 使用 E 盘 WSL2 Ubuntu 24.04 LTS。物理 NAS 不再是退出条件，因为计划要求的“独立 Samba/NAS”服务端已由独立 Samba 实现覆盖；不宣称验证了特定 NAS 厂商扩展。
+- M5 无剩余功能门禁；`0.2.0` 版本号、签名候选、升级与发布授权进入后续发布流程。
 - 详细证据见 [SMB M5 验证记录](../testing/2026-07-13_SMB_M5验证记录.md)。
 
 退出条件：脚本最终只输出 PASS 或 FAIL，并在失败时给出阶段、错误分类和 UTF-8 证据目录；Release 日志隐私、Crash/ANR、资源泄漏和 minified 构建通过。

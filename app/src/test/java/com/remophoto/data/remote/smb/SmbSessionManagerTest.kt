@@ -2,6 +2,7 @@ package com.remophoto.data.remote.smb
 
 import com.hierynomus.msdtyp.AccessMask
 import com.hierynomus.mserref.NtStatus
+import com.hierynomus.mssmb.SMB1NotSupportedException
 import com.remophoto.data.local.entity.RemoteConnectionEntity
 import com.remophoto.data.local.entity.RemoteType
 import com.remophoto.data.remote.RemoteDataException
@@ -10,6 +11,7 @@ import com.remophoto.data.security.CredentialStore
 import com.remophoto.util.AppLogger
 import java.net.SocketTimeoutException
 import java.io.ByteArrayInputStream
+import java.io.EOFException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -124,6 +126,8 @@ class SmbSessionManagerTest {
         assertEquals(RemoteErrorCategory.AUTH_FAILED, SmbErrorMapper.category(NtStatus.STATUS_LOGON_FAILURE))
         assertEquals(RemoteErrorCategory.SHARE_NOT_FOUND, SmbErrorMapper.category(NtStatus.STATUS_BAD_NETWORK_NAME))
         assertEquals(RemoteErrorCategory.ACCESS_DENIED, SmbErrorMapper.category(NtStatus.STATUS_ACCESS_DENIED))
+        assertEquals(RemoteErrorCategory.UNSUPPORTED_DIALECT, SmbErrorMapper.category(SMB1NotSupportedException()))
+        assertEquals(RemoteErrorCategory.UNSUPPORTED_DIALECT, SmbErrorMapper.negotiationCategory(EOFException()))
         assertEquals(RemoteErrorCategory.TIMEOUT, SmbErrorMapper.category(SocketTimeoutException()))
         assertEquals(RemoteErrorCategory.RESOURCE_LIMIT, SmbErrorMapper.category(NtStatus.STATUS_TOO_MANY_OPENED_FILES))
     }

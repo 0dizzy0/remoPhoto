@@ -8,11 +8,9 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationCompat
 import androidx.work.BackoffPolicy
-import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
-import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
@@ -158,7 +156,8 @@ class SmbRepositorySyncWorker(
 
         fun request(repositoryId: Long): OneTimeWorkRequest = OneTimeWorkRequestBuilder<SmbRepositorySyncWorker>()
             .setInputData(workDataOf(KEY_REPOSITORY_ID to repositoryId))
-            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            // SMB is a user-configured LAN endpoint. API 29 may expose a usable LAN while
+            // NetworkType.CONNECTED remains unsatisfied because internet validation failed.
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
             .addTag(WORK_TAG)
             .addTag(repositoryTag(repositoryId))

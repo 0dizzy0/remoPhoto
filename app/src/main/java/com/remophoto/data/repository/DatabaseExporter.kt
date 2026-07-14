@@ -39,7 +39,7 @@ object DatabaseExporter {
             val database = AppDatabase.getInstance(context)
             val sqlite = database.openHelper.writableDatabase
             val remoteCount = queryCount(sqlite, "remote_connections")
-            createSnapshot(sqlite, snapshot)
+            createSnapshot(context, database, snapshot)
 
             val datastore = File(context.filesDir, "datastore/$DATASTORE_FILE")
             val manifest = BackupManifest(
@@ -133,8 +133,8 @@ object DatabaseExporter {
                     "migration=${validation.databaseVersion}->${AppDatabase.SCHEMA_VERSION}"
             )
 
-            val activeDb = AppDatabase.getInstance(context).openHelper.writableDatabase
-            createSnapshot(activeDb, currentBackup)
+            val activeDatabase = AppDatabase.getInstance(context)
+            createSnapshot(context, activeDatabase, currentBackup)
             val targetSettings = File(context.filesDir, "datastore/$DATASTORE_FILE")
             hadOriginalSettings = targetSettings.exists()
             if (hadOriginalSettings) targetSettings.copyTo(settingsBackup, overwrite = true)
@@ -166,13 +166,61 @@ object DatabaseExporter {
         }
     }
 
-    private fun createSnapshot(database: androidx.sqlite.db.SupportSQLiteDatabase, output: File) {
+    /**
+     * 创建单文件一致性快照。
+     *
+     * Android 10/API 29 自带 SQLite 3.22，不支持 SQLite 3.27 才引入的
+     * `VACUUM INTO`。旧版本先安全退出 WAL，再在 Room 独占事务内复制主库；
+     * 复制期间写事务会被阻塞，完成后恢复原 WAL 模式。
+     */
+    internal fun createSnapshot(context: Context, roomDatabase: AppDatabase, output: File) {
         output.parentFile?.mkdirs()
         output.delete()
-        val escapedPath = output.absolutePath.replace("'", "''")
-        database.execSQL("VACUUM INTO '$escapedPath'")
+        val database = roomDatabase.openHelper.writableDatabase
+        val sqliteVersion = database.query("SELECT sqlite_version()").use { cursor ->
+            check(cursor.moveToFirst()) { "无法读取 SQLite 版本" }
+            cursor.getString(0)
+        }
+        if (supportsVacuumInto(sqliteVersion)) {
+            val escapedPath = output.absolutePath.replace("'", "''")
+            database.execSQL("VACUUM INTO '$escapedPath'")
+        } else {
+            val journalMode = database.query("PRAGMA journal_mode").use { cursor ->
+                check(cursor.moveToFirst()) { "无法读取数据库日志模式" }
+                cursor.getString(0)
+            }
+            val restoreWal = journalMode.equals("wal", ignoreCase = true)
+            AppLogger.i(TAG, "使用 API 29 兼容快照: sqlite=$sqliteVersion, wal=$restoreWal")
+            if (restoreWal) roomDatabase.openHelper.setWriteAheadLoggingEnabled(false)
+            try {
+                roomDatabase.runInTransaction {
+                    val source = context.getDatabasePath(DB_NAME)
+                    check(source.isFile) { "当前数据库文件不存在" }
+                    source.copyTo(output, overwrite = true)
+                }
+            } finally {
+                if (restoreWal) roomDatabase.openHelper.setWriteAheadLoggingEnabled(true)
+            }
+        }
         check(output.exists() && output.length() >= 4096) { "无法创建一致性数据库快照" }
+        SQLiteDatabase.openDatabase(
+            output.absolutePath,
+            null,
+            SQLiteDatabase.OPEN_READONLY,
+        ).use { snapshot ->
+            val integrity = snapshot.rawQuery("PRAGMA integrity_check", null).use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else "no_result"
+            }
+            check(integrity == "ok") { "数据库快照完整性校验失败" }
+        }
         AppLogger.d(TAG, "一致性快照完成: ${output.length()} bytes")
+    }
+
+    internal fun supportsVacuumInto(sqliteVersion: String): Boolean {
+        val parts = sqliteVersion.split('.').map { it.toIntOrNull() ?: 0 }
+        val major = parts.getOrElse(0) { 0 }
+        val minor = parts.getOrElse(1) { 0 }
+        return major > 3 || (major == 3 && minor >= 27)
     }
 
     private fun validateAndNormalize(dbFile: File): ImportValidation {

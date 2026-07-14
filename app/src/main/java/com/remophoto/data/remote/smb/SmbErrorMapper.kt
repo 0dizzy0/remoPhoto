@@ -1,10 +1,12 @@
 package com.remophoto.data.remote.smb
 
 import com.hierynomus.mserref.NtStatus
+import com.hierynomus.mssmb.SMB1NotSupportedException
 import com.hierynomus.mssmb2.SMBApiException
 import com.hierynomus.protocol.transport.TransportException
 import com.remophoto.data.remote.RemoteDataException
 import com.remophoto.data.remote.RemoteErrorCategory
+import java.io.EOFException
 import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
@@ -12,11 +14,22 @@ import java.net.UnknownHostException
 import java.util.concurrent.TimeoutException
 
 object SmbErrorMapper {
+    fun negotiationCategory(error: Throwable): RemoteErrorCategory? {
+        val chain = generateSequence(error as Throwable?) { it.cause }
+        return if (chain.any { it is SMB1NotSupportedException || it is EOFException }) {
+            RemoteErrorCategory.UNSUPPORTED_DIALECT
+        } else {
+            null
+        }
+    }
+
     fun category(error: Throwable): RemoteErrorCategory {
         val chain = generateSequence(error as Throwable?) { it.cause }
         val apiError = chain.filterIsInstance<SMBApiException>().firstOrNull()
         if (apiError != null) return category(apiError.status)
         return when {
+            chain.any { it is SMB1NotSupportedException } ->
+                RemoteErrorCategory.UNSUPPORTED_DIALECT
             chain.any { it is SocketTimeoutException || it is TimeoutException } ->
                 RemoteErrorCategory.TIMEOUT
             chain.any { it is UnknownHostException || it is ConnectException || it is NoRouteToHostException } ->

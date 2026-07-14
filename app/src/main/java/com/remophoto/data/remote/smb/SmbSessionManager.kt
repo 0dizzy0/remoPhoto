@@ -288,7 +288,11 @@ class SmbSessionManager(
             throw error
         } catch (error: Throwable) {
             val mapped = SmbErrorMapper.exception(error)
-            AppLogger.e(TAG, "SMB 操作失败: connectionId=${connection.id}, category=${mapped.category}")
+            AppLogger.e(
+                TAG,
+                "SMB 操作失败: connectionId=${connection.id}, category=${mapped.category}, " +
+                    "cause=${safeCause(error)}",
+            )
             throw mapped
         } finally {
             credential.fill('\u0000')
@@ -343,7 +347,7 @@ class SmbSessionManager(
     }
 
     private fun safeCause(error: Throwable): String = generateSequence(error) { it.cause }
-        .take(4)
+        .take(8)
         .joinToString(">") { it.javaClass.simpleName.ifBlank { "Throwable" } }
 
     override fun invalidate(connectionId: Long) {
@@ -428,7 +432,15 @@ class SmbjSessionBackend : SmbSessionBackend {
         var share: DiskShare? = null
         try {
             client = SMBClient(config)
-            transport = client.connect(connection.host, connection.port)
+            transport = try {
+                client.connect(connection.host, connection.port)
+            } catch (error: Throwable) {
+                val category = SmbErrorMapper.negotiationCategory(error)
+                if (category != null) {
+                    throw RemoteDataException(category, "SMB 协议协商失败", error)
+                }
+                throw error
+            }
             val authentication = AuthenticationContext(
                 checkNotNull(connection.username),
                 credential,
