@@ -47,6 +47,18 @@ class RemoPhotoApp : Application() {
         Coil.setImageLoader(dependencyContainer.imageLoader)
         AppLogger.i("RemoPhotoApp", "Coil 全局 ImageLoader 已设置（GIF/WebP 动图支持）")
 
+        // 导入/设备恢复不会携带 Keystore 凭据；启动时禁止以空密码尝试 SMB。
+        applicationScope.launch(Dispatchers.IO) {
+            runCatching {
+                dependencyContainer.remoteRepositoryLifecycleService.recoverMissingCredentials()
+            }.onFailure { error ->
+                AppLogger.e(
+                    "RemoPhotoApp",
+                    "SMB 凭据恢复检查失败: category=${error.javaClass.simpleName}",
+                )
+            }
+        }
+
         // 远程服务属于应用级能力，不能依赖用户是否进入设置页面。
         ensureRemoteServiceRunning("application_create")
     }

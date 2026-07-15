@@ -8,13 +8,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 
 /**
  * 分页导航组件
  *
  * 底部页码导航：[<] 1 … 5 [6] 7 … 20 [>]
- * 点击当前页码区域弹出输入框跳转。
+ * 点击省略号弹出输入框跳转。
  *
  * @param currentPage 当前页码（1-based）
  * @param totalPages 总页数
@@ -42,12 +43,11 @@ fun PageNavigator(
         // 上一页
         TextButton(
             onClick = { if (currentPage > 1) onPageChange(currentPage - 1) },
-            enabled = currentPage > 1
+            enabled = currentPage > 1,
+            modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("page_previous")
         ) {
             Text("<", style = MaterialTheme.typography.titleMedium)
         }
-
-        Spacer(modifier = Modifier.width(8.dp))
 
         // 智能页码显示
         val pages = generatePageNumbers(currentPage, totalPages)
@@ -55,23 +55,19 @@ fun PageNavigator(
             when (page) {
                 -1 -> {
                     // 省略号
-                    Text(
-                        text = "…",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    )
+                    TextButton(
+                        onClick = {
+                            showJumpDialog = true
+                            jumpPageInput = ""
+                        },
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("page_jump")
+                    ) { Text("…", style = MaterialTheme.typography.bodyMedium) }
                 }
                 else -> {
                     val isCurrent = page == currentPage
                     TextButton(
-                        onClick = {
-                            if (page != currentPage) onPageChange(page)
-                            else {
-                                showJumpDialog = true
-                                jumpPageInput = ""
-                            }
-                        }
+                        onClick = { if (page != currentPage) onPageChange(page) },
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("page_$page")
                     ) {
                         Text(
                             text = "$page",
@@ -85,12 +81,11 @@ fun PageNavigator(
             }
         }
 
-        Spacer(modifier = Modifier.width(8.dp))
-
         // 下一页
         TextButton(
             onClick = { if (currentPage < totalPages) onPageChange(currentPage + 1) },
-            enabled = currentPage < totalPages
+            enabled = currentPage < totalPages,
+            modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("page_next")
         ) {
             Text(">", style = MaterialTheme.typography.titleMedium)
         }
@@ -154,35 +149,14 @@ fun PageNavigator(
  * - 否则显示：1 … 中间区域 … N
  * - -1 表示省略号
  */
-private fun generatePageNumbers(current: Int, total: Int): List<Int> {
+internal fun generatePageNumbers(current: Int, total: Int): List<Int> {
     if (total <= 7) {
         return (1..total).toList()
     }
 
-    val pages = mutableListOf<Int>()
-
-    // 始终显示第 1 页
-    pages.add(1)
-
-    if (current > 3) {
-        pages.add(-1) // 省略号
+    return when {
+        current <= 3 -> listOf(1, 2, 3, -1, total)
+        current >= total - 2 -> listOf(1, -1, total - 2, total - 1, total)
+        else -> listOf(1, -1, current, -1, total)
     }
-
-    // 中间区域：[current-1, current, current+1]
-    val start = maxOf(2, current - 1)
-    val end = minOf(total - 1, current + 1)
-    for (i in start..end) {
-        pages.add(i)
-    }
-
-    if (current < total - 2) {
-        pages.add(-1) // 省略号
-    }
-
-    // 始终显示最后一页
-    if (total > 1) {
-        pages.add(total)
-    }
-
-    return pages
 }

@@ -20,6 +20,8 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.remophoto.RemoPhotoApp
 import com.remophoto.domain.model.Album
+import com.remophoto.data.remote.isRemoteMediaAddress
+import com.remophoto.data.remote.remoteMediaCacheKey
 import com.remophoto.util.AppLogger
 
 /**
@@ -45,7 +47,7 @@ fun AlbumCard(
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as RemoPhotoApp
-    val coverLoader = if (album.coverImagePath?.startsWith("http") == true) {
+    val coverLoader = if (album.coverImagePath?.isRemoteMediaAddress() == true) {
         app.dependencyContainer.remoteThumbnailLoader
     } else {
         app.dependencyContainer.thumbnailImageLoader
@@ -55,6 +57,12 @@ fun AlbumCard(
             .data(album.coverImagePath)
             .size(512)
             .crossfade(false)
+            .apply {
+                album.coverImagePath?.takeIf { it.isRemoteMediaAddress() }?.let { path ->
+                    memoryCacheKey(path.remoteMediaCacheKey(":cover"))
+                    diskCacheKey(path.remoteMediaCacheKey(":cover"))
+                }
+            }
             .build()
     }
     val indentPadding = if (!compact) (album.depth * 24).dp else 0.dp

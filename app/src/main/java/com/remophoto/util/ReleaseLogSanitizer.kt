@@ -8,16 +8,8 @@ package com.remophoto.util
  */
 internal object ReleaseLogSanitizer {
 
-    private val userLabelValue = Regex(
-        """\b(fileName|categoryName)\s*=\s*(?:"[^"]*"|'[^']*'|[^,，)\]\r\n]+)""",
-        RegexOption.IGNORE_CASE
-    )
-    private val userEntityValue = Regex(
-        """\b(repository|category|album|device|repo)\s*=\s*(?:"[^"]*"|'[^']*'|[^,，)\]\r\n]+)""",
-        RegexOption.IGNORE_CASE
-    )
-    private val namedValue = Regex(
-        """\b(deviceName|displayName|albumName|repositoryName|repoName|name|path|filePath|coverPath|deletedPath|uri|host)\s*=\s*(?:"[^"]*"|'[^']*'|[^,\s，)\]]+)""",
+    private val sensitiveFieldValue = Regex(
+        """\b(fileName|categoryName|repository|category|album|device|repo|deviceName|displayName|albumName|repositoryName|repoName|name|path|filePath|coverPath|deletedPath|uri|host)\s*=\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|.*?(?=\s*[,，]\s*[\p{L}_][\p{L}\p{N}_]*\s*=|[\r\n]|$))""",
         RegexOption.IGNORE_CASE
     )
     private val uri = Regex(
@@ -43,13 +35,7 @@ internal object ReleaseLogSanitizer {
     private val quotedUserName = Regex("""(相册|仓库|设备|分类)\s*["“][^"”]+["”]""")
 
     fun sanitize(value: String): String {
-        var result = userLabelValue.replace(value) { match ->
-            "${match.groupValues[1]}=<redacted>"
-        }
-        result = userEntityValue.replace(result) { match ->
-            "${match.groupValues[1]}=<redacted>"
-        }
-        result = namedValue.replace(result) { match ->
+        var result = sensitiveFieldValue.replace(value) { match ->
             "${match.groupValues[1]}=<redacted>"
         }
         result = uri.replace(result, "<uri>")

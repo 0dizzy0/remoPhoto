@@ -22,6 +22,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.request.ImageRequest
 import com.remophoto.domain.model.ImageItem
+import com.remophoto.data.remote.isRemoteMediaAddress
+import com.remophoto.data.remote.remoteMediaCacheKey
 import com.remophoto.util.AppLogger
 
 /**
@@ -52,7 +54,11 @@ fun ImageThumbnail(
             // 记忆化请求：使用 id+filePath 作为缓存键，避免不同图片共享相同路径的缓存
             val ctx = androidx.compose.ui.platform.LocalContext.current
             val app = ctx.applicationContext as com.remophoto.RemoPhotoApp
-            val thumbLoader = app.dependencyContainer.thumbnailImageLoader
+            val thumbLoader = if (image.filePath.isRemoteMediaAddress()) {
+                app.dependencyContainer.remoteThumbnailLoader
+            } else {
+                app.dependencyContainer.thumbnailImageLoader
+            }
 
             val thumbRequest = remember(image.id, image.filePath) {
                 ImageRequest.Builder(ctx)
@@ -60,13 +66,14 @@ fun ImageThumbnail(
                     .crossfade(false)
                     .size(300)
                     .precision(coil.size.Precision.INEXACT)  // 使用近似精度，更快解码
-                    .memoryCacheKey(image.filePath + "_thumb")  // 精确缓存键
+                    .memoryCacheKey(image.filePath.remoteMediaCacheKey(":thumb"))
+                    .diskCacheKey(image.filePath.remoteMediaCacheKey(":thumb"))
                     .listener(
                         onError = { _, result ->
-                            AppLogger.e(TAG,
-                                "缩略图加载失败: id=${image.id}, fileName=${image.fileName}, " +
-                                "path=${image.filePath}, error=${result.throwable?.message}",
-                                result.throwable
+                            AppLogger.e(
+                                TAG,
+                                "缩略图加载失败: imageId=${image.id}, " +
+                                    "category=${result.throwable?.javaClass?.simpleName}",
                             )
                         }
                     )

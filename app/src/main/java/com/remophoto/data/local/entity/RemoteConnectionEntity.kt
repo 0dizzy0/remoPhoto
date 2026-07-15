@@ -4,6 +4,7 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.remophoto.data.remote.RemoteConnectionIdentity
 
 /**
  * 远程连接配置实体
@@ -18,7 +19,8 @@ import androidx.room.PrimaryKey
     tableName = "remote_connections",
     indices = [
         Index("host"),
-        Index("status")
+        Index("status"),
+        Index(value = ["identity_key"], unique = true)
     ]
 )
 data class RemoteConnectionEntity(
@@ -44,6 +46,25 @@ data class RemoteConnectionEntity(
 
     /** 登录用户名（仅 SMB 类型使用，HTTP 为 null） */
     val username: String? = null,
+
+    /** 可选认证域（仅 SMB 类型使用） */
+    val domain: String? = null,
+
+    /** 共享内的可选仓库根目录（仅 SMB 类型使用） */
+    @ColumnInfo(name = "root_path")
+    val rootPath: String? = null,
+
+    /** 规范化连接身份的 SHA-256；不包含密码。 */
+    @ColumnInfo(name = "identity_key")
+    val identityKey: String = RemoteConnectionIdentity.create(
+        type = type,
+        host = host,
+        port = port,
+        shareName = shareName,
+        rootPath = rootPath,
+        domain = domain,
+        username = username,
+    ),
 
     /** 添加时间戳（毫秒） */
     @ColumnInfo(name = "added_time")
@@ -79,5 +100,8 @@ enum class ConnectionStatus {
     DISCONNECTED,
 
     /** 连接错误 — 上次 ping 失败（网络不可达、认证失败等） */
-    ERROR
+    ERROR,
+
+    /** 连接元数据存在，但本机凭据缺失或已失效。 */
+    AUTH_REQUIRED
 }

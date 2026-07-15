@@ -1,6 +1,6 @@
 # remoPhoto 文档中心
 
-更新时间：2026-07-08
+更新时间：2026-07-13
 
 > 当前公开版本为 `0.1.0`。APK SHA-256 为 `aa3a392eb1085008be9a16260419b80b18fd3326683eb179f399300d78c56eb1`；本地门禁、双机远程、备份恢复、Release 日志隐私、`beta.1 -> 0.1.0` 数据保留、CI 和线上附件 hash/签名/版本复验均已通过。
 
@@ -51,6 +51,10 @@ docs/
 | 文档 | 定位 |
 | --- | --- |
 | [远程仓库协议决策](architecture/04_远程仓库协议选型建议.md) | HTTP + mDNS 的协议范围、接口和安全边界 |
+| [SMB 远程仓库开发计划](project/10_SMB远程仓库开发计划.md) | `0.2.0` 建议范围、依赖决策门、架构拆分、里程碑和验收标准 |
+| [SMB 客户端库选型 ADR](architecture/05_SMB客户端库选型ADR.md) | SMBJ 选择、Android/R8、API 29/Samba 矩阵和依赖安全约束 |
+| [SMB M5 验证记录](testing/2026-07-13_SMB_M5验证记录.md) | API 29、Samba、异常矩阵、无人值守 Smoke、Release 隐私和 M5 退出结论 |
+| [0.2.0 Release Notes 草案](releases/v0.2.0_Release_Notes.md) | SMB2/3 用户能力、安全边界、兼容矩阵和正式候选前置说明 |
 | [Phase 4 性能优化归档](archive/09_Phase4_性能优化与问题修复归档.md) | Phase 4 修复摘要，仅用于追溯 |
 | [原始需求输入](product/99_原始需求输入.txt) | 未加工的初始需求，不作为当前验收依据 |
 | [图标设计预览](design/icon-r-preview.html) | 应用图标的设计预览 |

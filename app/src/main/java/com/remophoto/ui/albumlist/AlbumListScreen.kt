@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -31,13 +32,13 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import com.remophoto.data.local.entity.ConnectionStatus
 import com.remophoto.ui.components.AddRemoteRepoDialog
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.contentDescription
@@ -85,6 +86,7 @@ fun AlbumListScreen(
     val currentPage by viewModel.currentPage.collectAsState()
     val totalPages by viewModel.totalPages.collectAsState()
     val activeFilterCategoryName by viewModel.filterCategoryName.collectAsState()
+    val activeFilterCategoryId by viewModel.filterCategoryId.collectAsState()
     val pagedAlbums by viewModel.pagedAlbums.collectAsState()
     val selectedRepoId by viewModel.selectedRepoId.collectAsState()
     val selectedRepoName by viewModel.selectedRepoName.collectAsState()
@@ -101,7 +103,7 @@ fun AlbumListScreen(
     var showRemoveFromCategoryConfirm by remember { mutableStateOf(false) }
 
     // Phase 4: 添加远程仓库对话框
-    var showAddRemoteDialog by remember { mutableStateOf(false) }
+    var showAddRemoteDialog by rememberSaveable { mutableStateOf(false) }
     var showSearchDialog by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -112,11 +114,19 @@ fun AlbumListScreen(
         when {
             categoryId != null && categoryName != null -> {
                 AppLogger.i(TAG, "Apply album_list route: categoryId=$categoryId, categoryName=$categoryName")
-                viewModel.loadAlbumsByCategory(categoryId, categoryName)
+                if (activeFilterCategoryId != categoryId) {
+                    viewModel.loadAlbumsByCategory(categoryId, categoryName)
+                } else {
+                    AppLogger.i(TAG, "Keep album_list state: categoryId=$categoryId, page=$currentPage")
+                }
             }
             repoId != null && repoName != null -> {
                 AppLogger.i(TAG, "Apply album_list route: repoId=$repoId, repoName=$repoName")
-                viewModel.selectRepo(repoId, repoName)
+                if (selectedRepoId != repoId) {
+                    viewModel.selectRepo(repoId, repoName)
+                } else {
+                    AppLogger.i(TAG, "Keep album_list state: repoId=$repoId, page=$currentPage")
+                }
             }
             else -> {
                 AppLogger.i(TAG, "Apply album_list route: repository root")
@@ -468,6 +478,17 @@ fun AlbumListScreen(
                     }
                 } else {
                     // ===== 相册列表视图 =====
+                    val gridState = rememberLazyGridState()
+                    val listState = rememberLazyListState()
+
+                    LaunchedEffect(currentPage) {
+                        if (browsingAlbumId == null) {
+                            gridState.scrollToItem(0)
+                            listState.scrollToItem(0)
+                            AppLogger.i(TAG, "分页后回到列表顶部: page=$currentPage")
+                        }
+                    }
+
                     // 根级用分页数据，子相册用全量子相册
                     val displayAlbums = if (browsingAlbumId != null) {
                         remember(albumTree, browsingAlbumId) {
@@ -507,6 +528,7 @@ fun AlbumListScreen(
                         if (isGridView) {
                             LazyVerticalGrid(
                                 columns = GridCells.Fixed(2),
+                                state = gridState,
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .padding(padding),
@@ -542,8 +564,6 @@ fun AlbumListScreen(
                                 }
                             }
                         } else {
-                            val listState = rememberLazyListState()
-
                             Box(modifier = Modifier.fillMaxSize().padding(padding)) {
                                 LazyColumn(
                                     state = listState,
@@ -844,11 +864,13 @@ private fun RemoteRepoCard(
         ConnectionStatus.CONNECTED -> androidx.compose.ui.graphics.Color(0xFF4CAF50)
         ConnectionStatus.DISCONNECTED -> androidx.compose.ui.graphics.Color(0xFF9E9E9E)
         ConnectionStatus.ERROR -> androidx.compose.ui.graphics.Color(0xFFF44336)
+        ConnectionStatus.AUTH_REQUIRED -> androidx.compose.ui.graphics.Color(0xFFFF9800)
     }
     val statusText = when (status) {
         ConnectionStatus.CONNECTED -> "已连接"
         ConnectionStatus.DISCONNECTED -> "离线"
         ConnectionStatus.ERROR -> "错误"
+        ConnectionStatus.AUTH_REQUIRED -> "需重新认证"
     }
 
     Card(

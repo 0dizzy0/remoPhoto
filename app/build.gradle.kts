@@ -49,8 +49,8 @@ android {
         applicationId = "com.remophoto"
         minSdk = 29
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.1.0"
+        versionCode = 7
+        versionName = "0.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -158,6 +158,14 @@ dependencies {
 
     // Phase 4: JmDNS — mDNS 服务注册与发现
     implementation("org.jmdns:jmdns:3.5.9")
+
+    // SMB2/3 只读客户端；Android/R8 兼容性已在独立 Spike 中验证。
+    implementation("com.hierynomus:smbj:0.14.0")
+    constraints {
+        implementation("org.bouncycastle:bcprov-jdk18on:1.84") {
+            because("CVE-2026-0636 affects bcprov-jdk18on 1.74 through 1.83")
+        }
+    }
 
     // SplashScreen
     implementation("androidx.core:core-splashscreen:1.0.1")

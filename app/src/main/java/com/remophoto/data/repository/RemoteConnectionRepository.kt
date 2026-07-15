@@ -3,115 +3,107 @@ package com.remophoto.data.repository
 import com.remophoto.data.local.dao.RemoteConnectionDao
 import com.remophoto.data.local.entity.ConnectionStatus
 import com.remophoto.data.local.entity.RemoteConnectionEntity
-import com.remophoto.data.remote.RemoteAlbumDto
-import com.remophoto.data.remote.RemoteHttpClient
-import com.remophoto.data.remote.RemoteImageListResponse
+import com.remophoto.data.local.entity.RemoteType
+import com.remophoto.data.remote.RemoteAlbumRecord
+import com.remophoto.data.remote.RemoteMediaPage
+import com.remophoto.data.remote.RemoteMediaRef
+import com.remophoto.data.remote.RemoteMediaVariant
+import com.remophoto.data.remote.RemoteSourceRouter
 import com.remophoto.util.AppLogger
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
 
 /**
- * 远程连接数据仓库
+ * 协议无关的远程仓库入口。
  *
- * 组合 RemoteHttpClient 和 RemoteConnectionDao，提供远程仓库的高级操作：
- * - 连接测试（ping）
- * - 相册列表同步（fetch → upsert local DB）
- * - 图片列表同步
- * - 连接状态更新
- *
- * 内置重试逻辑：最多 2 次重试，指数退避（1s, 2s）。
+ * 连接状态、重试与观测日志在此统一处理；具体 HTTP/SMB 类型只存在于 source adapter 内。
  */
 class RemoteConnectionRepository(
-    private val httpClient: RemoteHttpClient,
-    private val connectionDao: RemoteConnectionDao
+    private val sourceRouter: RemoteSourceRouter,
+    private val connectionDao: RemoteConnectionDao,
 ) {
-
     companion object {
         private const val TAG = "RemoteConnectionRepository"
-        private const val MAX_RETRIES = 2
+        private const val MAX_ATTEMPTS = 2
     }
 
-    /**
-     * 测试远程连接
-     *
-     * @return true 表示连接可达
-     */
+    /** 保留当前手动添加 HTTP 设备的 API；M2 会改为完整 RemoteConfig。 */
     suspend fun testConnection(host: String, port: Int): Boolean {
+        val transient = RemoteConnectionEntity(
+            type = RemoteType.HTTP_MDNS,
+            host = host,
+            port = port,
+            displayName = "",
+            addedTime = 0L,
+        )
         return try {
-            httpClient.ping(host, port)
-        } catch (e: Exception) {
-            AppLogger.w(TAG, "连接测试失败: host=$host, port=$port — ${e.message}")
+            sourceRouter.sourceFor(transient.type).testConnection(transient)
+        } catch (error: Exception) {
+            AppLogger.w(TAG, "连接测试失败: category=${error.javaClass.simpleName}")
             false
         }
     }
 
-    /**
-     * 从远程设备获取相册列表
-     *
-     * @param connection 远程连接实体（含连接元信息）
-     * @return 远程相册 DTO 列表
-     */
-    suspend fun fetchAlbums(connection: RemoteConnectionEntity): List<RemoteAlbumDto> {
-        return try {
-            retry("fetchAlbums ${connection.host}:${connection.port}") {
-                val albums = httpClient.getAlbums(connection.host, connection.port)
-                updateConnectionStatus(connection.id, ConnectionStatus.CONNECTED)
-                AppLogger.i(TAG, "获取相册列表成功: ${albums.size} 个相册")
-                albums
-            }
-        } catch (e: Exception) {
-            updateConnectionStatus(connection.id, ConnectionStatus.ERROR)
-            AppLogger.e(TAG, "获取相册列表最终失败，连接已标记为 ERROR", e)
-            throw e
+    suspend fun fetchAlbums(connection: RemoteConnectionEntity): List<RemoteAlbumRecord> =
+        runObserved(connection, "fetch-albums") {
+            sourceRouter.sourceFor(connection.type).fetchAlbums(connection)
+        }.also { albums ->
+            AppLogger.i(TAG, "远程相册读取成功: connectionId=${connection.id}, count=${albums.size}")
         }
-    }
 
-    /**
-     * 从远程设备获取相册内图片列表
-     */
-    suspend fun fetchImages(
+    suspend fun fetchMediaPage(
         connection: RemoteConnectionEntity,
-        albumId: Long,
+        albumRemoteKey: String,
         page: Int = 1,
-        pageSize: Int = 50
-    ): RemoteImageListResponse {
-        return retry("fetchImages ${connection.host}:${connection.port} album=$albumId") {
-            val response = httpClient.getImages(connection.host, connection.port, albumId, page, pageSize)
-            AppLogger.i(TAG, "获取图片列表成功: album=$albumId, ${response.images.size}/${response.totalCount}")
-            response
+        pageSize: Int = 50,
+    ): RemoteMediaPage = retry(connection.id, "fetch-media-page") {
+        sourceRouter.sourceFor(connection.type).fetchMediaPage(
+            connection = connection,
+            albumRemoteKey = albumRemoteKey,
+            page = page,
+            pageSize = pageSize,
+        )
+    }.also { response ->
+        AppLogger.i(
+            TAG,
+            "远程图片页读取成功: connectionId=${connection.id}, " +
+                "page=${response.page}, count=${response.items.size}/${response.totalCount}",
+        )
+    }
+
+    fun mediaRef(
+        connection: RemoteConnectionEntity,
+        mediaRemoteKey: String,
+        variant: RemoteMediaVariant,
+    ): RemoteMediaRef = sourceRouter.sourceFor(connection.type)
+        .mediaRef(connection, mediaRemoteKey, variant)
+
+    suspend fun checkConnection(connection: RemoteConnectionEntity): ConnectionStatus = try {
+        val ok = sourceRouter.sourceFor(connection.type).testConnection(connection)
+        val status = if (ok) ConnectionStatus.CONNECTED else ConnectionStatus.ERROR
+        updateConnectionStatus(connection.id, status)
+        status
+    } catch (_: Exception) {
+        updateConnectionStatus(connection.id, ConnectionStatus.ERROR)
+        ConnectionStatus.ERROR
+    }
+
+    private suspend fun <T> runObserved(
+        connection: RemoteConnectionEntity,
+        stage: String,
+        block: suspend () -> T,
+    ): T = try {
+        retry(connection.id, stage, block).also {
+            updateConnectionStatus(connection.id, ConnectionStatus.CONNECTED)
         }
+    } catch (error: Exception) {
+        updateConnectionStatus(connection.id, ConnectionStatus.ERROR)
+        AppLogger.e(
+            TAG,
+            "远程操作失败: connectionId=${connection.id}, stage=$stage, " +
+                "category=${error.javaClass.simpleName}",
+        )
+        throw error
     }
-
-    /**
-     * 获取远程图片流 URL 字符串
-     */
-    fun getImageUrl(host: String, port: Int, imageId: Long): String {
-        return "http://$host:$port/api/image/$imageId"
-    }
-
-    /**
-     * 获取远程缩略图 URL 字符串
-     */
-    fun getThumbnailUrl(host: String, port: Int, imageId: Long): String {
-        return "http://$host:$port/api/image/$imageId/thumb"
-    }
-
-    /**
-     * Ping 并更新连接状态
-     */
-    suspend fun checkConnection(connection: RemoteConnectionEntity): ConnectionStatus {
-        return try {
-            val ok = httpClient.ping(connection.host, connection.port)
-            val status = if (ok) ConnectionStatus.CONNECTED else ConnectionStatus.ERROR
-            updateConnectionStatus(connection.id, status)
-            status
-        } catch (e: Exception) {
-            updateConnectionStatus(connection.id, ConnectionStatus.ERROR)
-            ConnectionStatus.ERROR
-        }
-    }
-
-    // ===== Private =====
 
     private suspend fun updateConnectionStatus(connectionId: Long, status: ConnectionStatus) {
         try {
@@ -119,24 +111,41 @@ class RemoteConnectionRepository(
             if (status == ConnectionStatus.CONNECTED) {
                 connectionDao.updateLastConnectedTime(connectionId, System.currentTimeMillis())
             }
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "更新连接状态失败", e)
+        } catch (error: Exception) {
+            AppLogger.e(
+                TAG,
+                "连接状态更新失败: connectionId=$connectionId, category=${error.javaClass.simpleName}",
+            )
         }
     }
 
-    private suspend fun <T> retry(tag: String, block: suspend () -> T): T {
+    private suspend fun <T> retry(
+        connectionId: Long,
+        stage: String,
+        block: suspend () -> T,
+    ): T {
         var lastException: Exception? = null
-        repeat(MAX_RETRIES) { attempt ->
+        repeat(MAX_ATTEMPTS) { attempt ->
             try {
                 return block()
-            } catch (e: Exception) {
-                lastException = e
-                AppLogger.w(TAG, "$tag 第 ${attempt + 1} 次尝试失败: ${e.message}")
-                if (attempt < MAX_RETRIES - 1) {
-                    kotlinx.coroutines.delay(1000L * (attempt + 1)) // 1s, 2s
+            } catch (cancelled: CancellationException) {
+                AppLogger.i(
+                    TAG,
+                    "远程操作取消: connectionId=$connectionId, stage=$stage, attempt=${attempt + 1}",
+                )
+                throw cancelled
+            } catch (error: Exception) {
+                lastException = error
+                AppLogger.w(
+                    TAG,
+                    "远程操作重试: connectionId=$connectionId, stage=$stage, " +
+                        "attempt=${attempt + 1}/$MAX_ATTEMPTS, category=${error.javaClass.simpleName}",
+                )
+                if (attempt < MAX_ATTEMPTS - 1) {
+                    kotlinx.coroutines.delay(1000L * (attempt + 1))
                 }
             }
         }
-        throw lastException ?: RuntimeException("$tag 失败")
+        throw lastException ?: IllegalStateException("远程操作失败: stage=$stage")
     }
 }

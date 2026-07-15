@@ -39,12 +39,12 @@ class RemoteImageFetcher(
     }
 
     override suspend fun fetch(): FetchResult {
-        AppLogger.d(TAG, "Fetching: $url")
+        AppLogger.d(TAG, "远程图片读取开始")
 
         val connection = openConnection(url)
         return try {
             if (connection.responseCode != 200) {
-                throw RuntimeException("HTTP ${connection.responseCode} for $url")
+                throw RuntimeException("远程图片 HTTP ${connection.responseCode}")
             }
 
             val inputStream = BufferedInputStream(connection.inputStream)

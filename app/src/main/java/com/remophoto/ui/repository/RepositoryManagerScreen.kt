@@ -16,15 +16,25 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.password
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.remophoto.data.local.entity.RepositoryEntity
+import com.remophoto.data.local.entity.ConnectionStatus
+import com.remophoto.data.local.entity.RemoteConnectionEntity
+import com.remophoto.data.local.entity.RemoteType
+import com.remophoto.di.dependencies
+import com.remophoto.ui.components.SmbDirectoryBrowserDialog
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -49,6 +59,10 @@ fun RepositoryManagerScreen(
     val repositories by viewModel.repositories.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    val remoteConnections by viewModel.remoteConnections.collectAsState()
+    val remoteSyncingRepoIds by viewModel.remoteSyncingRepoIds.collectAsState()
+    val remoteSyncStatusMap by viewModel.remoteSyncStatusMap.collectAsState()
+    val reauthenticatingIds by viewModel.reauthenticatingConnectionIds.collectAsState()
 
     // 扫描状态
     val isScanning by viewModel.isScanning.collectAsState()
@@ -69,6 +83,8 @@ fun RepositoryManagerScreen(
 
     // 删除确认对话框
     var deleteConfirmRepoId by remember { mutableStateOf<Long?>(null) }
+    var reauthConnectionId by remember { mutableStateOf<Long?>(null) }
+    var rootConnectionId by remember { mutableStateOf<Long?>(null) }
 
     BackHandler {
         onBack()
@@ -163,13 +179,44 @@ fun RepositoryManagerScreen(
                         isPaused = repo.id in pausedRepoIds,
                         scanProgress = scanProgressMap[repo.id] ?: 0f,
                         scanStatus = scanStatusMap[repo.id],
+                        remoteConnection = repo.remoteConnectionId?.let(remoteConnections::get),
+                        isRemoteSyncing = repo.id in remoteSyncingRepoIds,
+                        remoteSyncStatus = remoteSyncStatusMap[repo.id],
                         onDelete = { deleteConfirmRepoId = repo.id },
                         onRescan = { viewModel.rescanRepository(repo.id) },
                         onPause = { viewModel.pauseScan(repo.id) },
-                        onCancelScan = { viewModel.cancelRepoScan(repo.id) }
+                        onCancelScan = { viewModel.cancelRepoScan(repo.id) },
+                        onRemoteRefresh = { viewModel.refreshRemoteRepository(repo.id) },
+                        onRemoteCancel = { viewModel.cancelRemoteSync(repo.id) },
+                        onReauthenticate = { repo.remoteConnectionId?.let { reauthConnectionId = it } },
+                        onChooseSmbRoot = { repo.remoteConnectionId?.let { rootConnectionId = it } },
                     )
                 }
             }
+        }
+    }
+
+    reauthConnectionId?.let { connectionId ->
+        ReauthenticateSmbDialog(
+            loading = connectionId in reauthenticatingIds,
+            onDismiss = { if (connectionId !in reauthenticatingIds) reauthConnectionId = null },
+            onConfirm = { password ->
+                viewModel.reauthenticate(connectionId, password) { reauthConnectionId = null }
+            },
+        )
+    }
+
+    rootConnectionId?.let { connectionId ->
+        remoteConnections[connectionId]?.let { connection ->
+            SmbDirectoryBrowserDialog(
+                sessionManager = context.dependencies.smbSessionManager,
+                connection = connection.copy(rootPath = null),
+                initialPath = connection.rootPath.orEmpty().replace('\\', '/').trim('/'),
+                onSelected = { selected ->
+                    viewModel.updateSmbRoot(connectionId, selected) { rootConnectionId = null }
+                },
+                onDismiss = { rootConnectionId = null },
+            )
         }
     }
 
@@ -221,10 +268,17 @@ private fun RepositoryItem(
     isPaused: Boolean = false,
     scanProgress: Float = 0f,
     scanStatus: RepositoryManagerViewModel.ScanUiState? = null,
+    remoteConnection: RemoteConnectionEntity? = null,
+    isRemoteSyncing: Boolean = false,
+    remoteSyncStatus: RepositoryManagerViewModel.ScanUiState? = null,
     onDelete: () -> Unit,
     onRescan: () -> Unit,
     onPause: () -> Unit = {},
-    onCancelScan: () -> Unit = {}
+    onCancelScan: () -> Unit = {},
+    onRemoteRefresh: () -> Unit = {},
+    onRemoteCancel: () -> Unit = {},
+    onReauthenticate: () -> Unit = {},
+    onChooseSmbRoot: () -> Unit = {},
 ) {
     val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
 
@@ -261,7 +315,7 @@ private fun RepositoryItem(
                 }
 
                 // 扫描中指示器
-                if (isScanning) {
+                if (isScanning || isRemoteSyncing) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(16.dp),
                         strokeWidth = 2.dp
@@ -271,23 +325,24 @@ private fun RepositoryItem(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // 路径
             Text(
-                text = repo.uriString,
+                text = if (isRemote) {
+                    when (remoteConnection?.type) {
+                        RemoteType.SMB -> "SMB 共享"
+                        RemoteType.HTTP_MDNS -> "remoPhoto 设备"
+                        null -> "远程仓库"
+                    }
+                } else repo.uriString,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // 统计信息行
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            // 统计与操作分行显示，保证窄屏下每个 48dp 操作目标都可点击。
+            Column(modifier = Modifier.fillMaxWidth()) {
                 // 左侧：图片数量 + 扫描时间（远程仓库显示"同步"）
                 Column {
                     Text(
@@ -296,7 +351,17 @@ private fun RepositoryItem(
                     )
                     Text(
                         text = if (isRemote) {
-                            "远程仓库 · 点击自动同步"
+                            val statusText = when (remoteConnection?.status) {
+                                ConnectionStatus.CONNECTED -> "已连接"
+                                ConnectionStatus.DISCONNECTED -> "未连接"
+                                ConnectionStatus.ERROR -> "连接异常"
+                                ConnectionStatus.AUTH_REQUIRED -> "需要重新认证"
+                                null -> "连接信息缺失"
+                            }
+                            val lastSuccess = remoteConnection?.lastConnectedTime?.let {
+                                " · 上次成功 ${dateFormat.format(Date(it))}"
+                            }.orEmpty()
+                            statusText + lastSuccess
                         } else if (repo.lastScanTime > 0) {
                             "最后扫描: ${dateFormat.format(Date(repo.lastScanTime))}"
                         } else {
@@ -307,9 +372,29 @@ private fun RepositoryItem(
                     )
                 }
 
-                // 右侧：操作按钮
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    if (!isRemote) {
+                Row(
+                    modifier = Modifier.align(Alignment.End),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    if (isRemote) {
+                        if (remoteConnection?.type == RemoteType.SMB) {
+                            IconButton(onClick = onChooseSmbRoot) {
+                                Icon(Icons.Default.Folder, contentDescription = "选择 ${repo.name} 的相册目录")
+                            }
+                            IconButton(onClick = onReauthenticate) {
+                                Icon(Icons.Default.Key, contentDescription = "重新认证 ${repo.name}")
+                            }
+                        }
+                        IconButton(
+                            onClick = if (isRemoteSyncing) onRemoteCancel else onRemoteRefresh,
+                            enabled = remoteConnection?.status != ConnectionStatus.AUTH_REQUIRED || isRemoteSyncing,
+                        ) {
+                            Icon(
+                                if (isRemoteSyncing) Icons.Default.Stop else Icons.Default.Refresh,
+                                contentDescription = if (isRemoteSyncing) "取消刷新 ${repo.name}" else "刷新 ${repo.name}",
+                            )
+                        }
+                    } else {
                         // 本地仓库：▶/⏸ | ⏹ | 🗑
                         val isActive = isScanning && !isPaused
                         IconButton(onClick = {
@@ -384,6 +469,69 @@ private fun RepositoryItem(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+
+            if (isRemoteSyncing) {
+                Spacer(modifier = Modifier.height(8.dp))
+                val total = remoteSyncStatus?.total
+                if (total != null && total > 0) {
+                    LinearProgressIndicator(
+                        progress = { (remoteSyncStatus.indexed.toFloat() / total).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+                Text(
+                    text = remoteSyncStatus?.let { status ->
+                        if (status.total == null) {
+                            "${status.phase} · 已检查 ${status.directories} 个目录 · 已发现 ${status.discovered} 张"
+                        } else {
+                            "${status.phase} · ${status.indexed} / ${status.total} 张"
+                        }
+                    } ?: "准备刷新…",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun ReauthenticateSmbDialog(
+    loading: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var passwordValue by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("重新认证 SMB 共享") },
+        text = {
+            Column {
+                Text("新凭据会先通过连接测试，成功后才替换本机加密凭据。")
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = passwordValue,
+                    onValueChange = { passwordValue = it },
+                    label = { Text("密码") },
+                    singleLine = true,
+                    enabled = !loading,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth().semantics { password() },
+                )
+                if (loading) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = passwordValue.isNotEmpty() && !loading,
+                onClick = { onConfirm(passwordValue) },
+            ) { Text("测试并更新") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !loading) { Text("取消") } },
+    )
 }

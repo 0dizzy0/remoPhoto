@@ -6,6 +6,11 @@ import android.security.keystore.KeyProperties
 import com.remophoto.util.AppLogger
 import java.io.File
 import java.security.KeyStore
+import java.nio.CharBuffer
+import java.nio.charset.StandardCharsets
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -28,12 +33,12 @@ import javax.crypto.spec.GCMParameterSpec
  * 用法：
  * ```
  * val keyStoreManager = KeyStoreManager(context)
- * keyStoreManager.storeCredential(connId, "password123")
- * val pwd = keyStoreManager.getCredential(connId) // "password123"
+ * keyStoreManager.storeCredential(connId, passwordChars)
+ * val pwd = keyStoreManager.getCredential(connId)
  * keyStoreManager.deleteCredential(connId)
  * ```
  */
-class KeyStoreManager(private val context: Context) {
+class KeyStoreManager(private val context: Context) : CredentialStore {
 
     companion object {
         private const val TAG = "KeyStoreManager"
@@ -55,7 +60,8 @@ class KeyStoreManager(private val context: Context) {
      * @param connectionId 远程连接 ID
      * @param credential 凭据明文（SMB 密码 / HTTP Token）
      */
-    fun storeCredential(connectionId: Long, credential: String) {
+    override fun storeCredential(connectionId: Long, credential: CharArray) {
+        var plainBytes: ByteArray? = null
         try {
             val alias = keyAlias(connectionId)
 
@@ -69,15 +75,43 @@ class KeyStoreManager(private val context: Context) {
             cipher.init(Cipher.ENCRYPT_MODE, secretKey)
 
             val iv = cipher.iv // GCM 随机 IV，12 bytes
-            val encrypted = cipher.doFinal(credential.toByteArray(Charsets.UTF_8))
+            val encoded = StandardCharsets.UTF_8.encode(CharBuffer.wrap(credential))
+            plainBytes = ByteArray(encoded.remaining()).also { encoded.get(it) }
+            val encrypted = cipher.doFinal(plainBytes)
 
             // IV（12 bytes）+ 密文拼接存储（IV 不需要保密，但必须是随机的）
-            File(credDir, alias).writeBytes(iv + encrypted)
+            val target = File(credDir, alias)
+            val temporary = File(credDir, "$alias.tmp")
+            val blob = iv + encrypted
+            try {
+                temporary.writeBytes(blob)
+                try {
+                    Files.move(
+                        temporary.toPath(),
+                        target.toPath(),
+                        StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.ATOMIC_MOVE,
+                    )
+                } catch (_: AtomicMoveNotSupportedException) {
+                    Files.move(
+                        temporary.toPath(),
+                        target.toPath(),
+                        StandardCopyOption.REPLACE_EXISTING,
+                    )
+                }
+            } finally {
+                blob.fill(0)
+                encrypted.fill(0)
+                iv.fill(0)
+                temporary.delete()
+            }
 
             AppLogger.d(TAG, "凭据已存储: connectionId=$connectionId")
         } catch (e: Exception) {
-            AppLogger.e(TAG, "存储凭据失败: connectionId=$connectionId", e)
-            throw SecurityException("无法存储凭据: ${e.message}", e)
+            AppLogger.e(TAG, "存储凭据失败: connectionId=$connectionId, category=${e.javaClass.simpleName}")
+            throw SecurityException("无法存储凭据", e)
+        } finally {
+            plainBytes?.fill(0)
         }
     }
 
@@ -86,7 +120,7 @@ class KeyStoreManager(private val context: Context) {
      *
      * @return 凭据明文，如果不存在则返回 null
      */
-    fun getCredential(connectionId: Long): String? {
+    override fun getCredential(connectionId: Long): CharArray? {
         return try {
             val alias = keyAlias(connectionId)
 
@@ -96,6 +130,10 @@ class KeyStoreManager(private val context: Context) {
             if (!blobFile.exists()) return null
 
             val combined = blobFile.readBytes()
+            if (combined.size <= 12) {
+                combined.fill(0)
+                return null
+            }
             val iv = combined.copyOfRange(0, 12)
             val encrypted = combined.copyOfRange(12, combined.size)
 
@@ -103,10 +141,17 @@ class KeyStoreManager(private val context: Context) {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(128, iv))
             val decrypted = cipher.doFinal(encrypted)
-
-            String(decrypted, Charsets.UTF_8)
+            try {
+                val decoded = StandardCharsets.UTF_8.decode(java.nio.ByteBuffer.wrap(decrypted))
+                CharArray(decoded.remaining()).also { decoded.get(it) }
+            } finally {
+                decrypted.fill(0)
+                combined.fill(0)
+                iv.fill(0)
+                encrypted.fill(0)
+            }
         } catch (e: Exception) {
-            AppLogger.e(TAG, "读取凭据失败: connectionId=$connectionId", e)
+            AppLogger.e(TAG, "读取凭据失败: connectionId=$connectionId, category=${e.javaClass.simpleName}")
             null
         }
     }
@@ -114,23 +159,25 @@ class KeyStoreManager(private val context: Context) {
     /**
      * 删除凭据（同时清除 Keystore 密钥和加密 blob）
      */
-    fun deleteCredential(connectionId: Long) {
+    override fun deleteCredential(connectionId: Long) {
         try {
             val alias = keyAlias(connectionId)
             if (keystore.containsAlias(alias)) {
                 keystore.deleteEntry(alias)
             }
-            File(credDir, alias).delete()
+            val blob = File(credDir, alias)
+            check(!blob.exists() || blob.delete()) { "无法删除凭据文件" }
             AppLogger.d(TAG, "凭据已删除: connectionId=$connectionId")
         } catch (e: Exception) {
-            AppLogger.e(TAG, "删除凭据失败: connectionId=$connectionId", e)
+            AppLogger.e(TAG, "删除凭据失败: connectionId=$connectionId, category=${e.javaClass.simpleName}")
+            throw SecurityException("无法删除凭据", e)
         }
     }
 
     /**
      * 检查凭据是否存在
      */
-    fun hasCredential(connectionId: Long): Boolean {
+    override fun hasCredential(connectionId: Long): Boolean {
         return try {
             val alias = keyAlias(connectionId)
             keystore.containsAlias(alias) && File(credDir, alias).exists()

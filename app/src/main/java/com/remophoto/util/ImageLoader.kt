@@ -8,6 +8,7 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import coil.request.CachePolicy
 import com.remophoto.data.remote.RemoteImageFetcher
+import com.remophoto.data.remote.smb.SmbImageFetcher
 
 /**
  * Coil 图片加载器工厂
@@ -40,6 +41,7 @@ object ImageLoaderFactory {
             .components {
                 add(GifDecoder.Factory())
                 add(RemoteImageFetcher.Factory())
+                add(SmbImageFetcher.Factory())
                 // Android 9+ 内置 ImageDecoder 支持 WebP 动图
                 add(ImageDecoderDecoder.Factory())
             }
@@ -98,6 +100,7 @@ object ImageLoaderFactory {
             }
             .components {
                 add(RemoteImageFetcher.Factory())
+                add(SmbImageFetcher.Factory())
             }
             .crossfade(0) // 缩略图无动画
             .diskCachePolicy(CachePolicy.ENABLED)
@@ -127,6 +130,7 @@ object ImageLoaderFactory {
             }
             .components {
                 add(RemoteImageFetcher.Factory())
+                add(SmbImageFetcher.Factory())
                 add(GifDecoder.Factory())
                 add(ImageDecoderDecoder.Factory())
             }

@@ -10,9 +10,19 @@ import com.remophoto.data.local.dao.RemoteConnectionDao
 import com.remophoto.data.local.dao.RepositoryDao
 import com.remophoto.data.security.KeyStoreManager
 import com.remophoto.data.remote.RemoteHttpClient
+import com.remophoto.data.remote.HttpRemoteCatalogSource
+import com.remophoto.data.remote.RemoteSourceRouter
+import com.remophoto.data.remote.smb.SmbSessionManager
+import com.remophoto.data.remote.smb.SmbCatalogScanner
+import com.remophoto.data.remote.smb.SmbMediaResolver
+import com.remophoto.data.remote.smb.SmbLanDiscovery
+import com.remophoto.data.remote.smb.SmbRemoteCatalogSource
+import com.remophoto.data.remote.smb.SmbRepositoryExternalCleaner
 import com.remophoto.data.repository.AlbumRepository
 import com.remophoto.data.repository.ImageRepository
 import com.remophoto.data.repository.RemoteConnectionRepository
+import com.remophoto.data.repository.RemoteRepositoryLifecycleService
+import com.remophoto.data.repository.RoomRemoteMetadataStore
 import com.remophoto.data.repository.RepositoryManager
 import com.remophoto.data.repository.SettingsRepository
 import com.remophoto.data.scanner.FileScanner
@@ -22,6 +32,7 @@ import com.remophoto.domain.usecase.CreateAlbumsUseCase
 import com.remophoto.domain.usecase.ScanImagesUseCase
 import com.remophoto.domain.usecase.SortImagesUseCase
 import com.remophoto.domain.usecase.SyncRemoteRepositoryUseCase
+import com.remophoto.domain.usecase.SyncSmbRepositoryUseCase
 import com.remophoto.util.ImageLoaderFactory
 import com.remophoto.util.PermissionHelper
 import coil.ImageLoader
@@ -90,12 +101,79 @@ class DependencyContainer(private val app: RemoPhotoApp) {
 
     val remoteHttpClient: RemoteHttpClient by lazy { RemoteHttpClient() }
 
+    private val remoteMetadataStore: RoomRemoteMetadataStore by lazy {
+        RoomRemoteMetadataStore(
+            database = database,
+            connectionDao = remoteConnectionDao,
+            repositoryDao = repositoryDao,
+            imageDao = imageDao,
+            albumDao = albumDao,
+        )
+    }
+
+    val smbSessionManager: SmbSessionManager by lazy {
+        SmbSessionManager(keyStoreManager)
+    }
+
+    val smbLanDiscovery: SmbLanDiscovery by lazy { SmbLanDiscovery(app) }
+
+    val smbCatalogScanner: SmbCatalogScanner by lazy {
+        SmbCatalogScanner(smbSessionManager)
+    }
+
+    val smbMediaResolver: SmbMediaResolver by lazy {
+        SmbMediaResolver(imageDao, albumDao, remoteConnectionDao)
+    }
+
+    val syncSmbRepositoryUseCase: SyncSmbRepositoryUseCase by lazy {
+        SyncSmbRepositoryUseCase(
+            context = app,
+            database = database,
+            scanner = smbCatalogScanner,
+            albumDao = albumDao,
+            imageDao = imageDao,
+            repositoryDao = repositoryDao,
+            connectionDao = remoteConnectionDao,
+        )
+    }
+
+    val remoteSourceRouter: RemoteSourceRouter by lazy {
+        RemoteSourceRouter(
+            listOf(
+                HttpRemoteCatalogSource(remoteHttpClient),
+                SmbRemoteCatalogSource(smbSessionManager),
+            )
+        )
+    }
+
     val remoteConnectionRepository: RemoteConnectionRepository by lazy {
-        RemoteConnectionRepository(remoteHttpClient, remoteConnectionDao)
+        RemoteConnectionRepository(remoteSourceRouter, remoteConnectionDao)
+    }
+
+    val remoteRepositoryLifecycleService: RemoteRepositoryLifecycleService by lazy {
+        RemoteRepositoryLifecycleService(
+            metadataStore = remoteMetadataStore,
+            credentialStore = keyStoreManager,
+            sessionInvalidator = smbSessionManager,
+            externalCleaner = SmbRepositoryExternalCleaner(
+                context = app,
+                imageDao = imageDao,
+                albumDao = albumDao,
+                remoteThumbnailLoader = { remoteThumbnailLoader },
+                remoteImageLoader = { remoteImageLoader },
+            ),
+        )
     }
 
     val syncRemoteRepositoryUseCase: SyncRemoteRepositoryUseCase by lazy {
-        SyncRemoteRepositoryUseCase(database, albumDao, imageDao, repositoryDao, remoteConnectionRepository)
+        SyncRemoteRepositoryUseCase(
+            database,
+            albumDao,
+            imageDao,
+            repositoryDao,
+            remoteConnectionRepository,
+            syncSmbRepositoryUseCase,
+        )
     }
 
     // PermissionHelper 需要 Activity 实例，不在此处创建

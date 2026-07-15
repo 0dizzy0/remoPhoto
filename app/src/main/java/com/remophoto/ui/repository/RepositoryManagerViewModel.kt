@@ -6,10 +6,19 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.remophoto.RemoPhotoApp
 import com.remophoto.data.local.entity.RepositoryEntity
+import com.remophoto.data.local.entity.ConnectionStatus
+import com.remophoto.data.local.entity.RemoteConnectionEntity
+import com.remophoto.data.local.entity.RemoteType
+import com.remophoto.data.remote.RemoteDataException
+import com.remophoto.data.remote.RemoteErrorCategory
+import com.remophoto.data.remote.RemoteConnectionIdentity
+import com.remophoto.data.remote.smb.SmbPathCodec
+import com.remophoto.data.remote.smb.SmbRepositorySyncWorker
 import com.remophoto.data.repository.RepositoryManager
 import com.remophoto.domain.usecase.ScanImagesUseCase
 import com.remophoto.util.AppLogger
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
@@ -27,6 +36,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.remophoto.data.scanner.RepositoryScanWorker
+import com.remophoto.ui.components.SmbFormPolicy
 
 /**
  * 仓库管理 ViewModel
@@ -52,6 +62,20 @@ class RepositoryManagerViewModel(application: Application) : AndroidViewModel(ap
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
+    private val _remoteConnections = MutableStateFlow<Map<Long, RemoteConnectionEntity>>(emptyMap())
+    val remoteConnections: StateFlow<Map<Long, RemoteConnectionEntity>> = _remoteConnections.asStateFlow()
+
+    private val _remoteSyncingRepoIds = MutableStateFlow<Set<Long>>(emptySet())
+    val remoteSyncingRepoIds: StateFlow<Set<Long>> = _remoteSyncingRepoIds.asStateFlow()
+    private val httpSyncJobs = ConcurrentHashMap<Long, Job>()
+    private var smbSyncingRepoIds: Set<Long> = emptySet()
+
+    private val _remoteSyncStatusMap = MutableStateFlow<Map<Long, ScanUiState>>(emptyMap())
+    val remoteSyncStatusMap: StateFlow<Map<Long, ScanUiState>> = _remoteSyncStatusMap.asStateFlow()
+
+    private val _reauthenticatingConnectionIds = MutableStateFlow<Set<Long>>(emptySet())
+    val reauthenticatingConnectionIds: StateFlow<Set<Long>> = _reauthenticatingConnectionIds.asStateFlow()
 
     // ===== 扫描状态 =====
 
@@ -96,6 +120,44 @@ class RepositoryManagerViewModel(application: Application) : AndroidViewModel(ap
     private val scanSemaphore = Semaphore(3)
 
     init {
+        viewModelScope.launch {
+            container.remoteConnectionDao.getAllConnections().collect { connections ->
+                _remoteConnections.value = connections.associateBy { it.id }
+            }
+        }
+        viewModelScope.launch {
+            workManager.getWorkInfosByTagFlow(SmbRepositorySyncWorker.WORK_TAG).collect { works ->
+                val activeIds = mutableSetOf<Long>()
+                val states = mutableMapOf<Long, ScanUiState>()
+                works.forEach { work ->
+                    val repoId = work.tags.firstOrNull { it.startsWith("smb_repository_sync_repo_") }
+                        ?.substringAfterLast('_')?.toLongOrNull() ?: return@forEach
+                    if (work.state == WorkInfo.State.RUNNING || work.state == WorkInfo.State.ENQUEUED) {
+                        activeIds += repoId
+                    }
+                    val data = work.progress
+                    val total = data.getInt(SmbRepositorySyncWorker.KEY_TOTAL, -1).takeIf { it >= 0 }
+                    states[repoId] = ScanUiState(
+                        phase = data.getString(SmbRepositorySyncWorker.KEY_PHASE)
+                            ?: if (work.state == WorkInfo.State.ENQUEUED) "等待网络" else "准备刷新",
+                        discovered = data.getInt(SmbRepositorySyncWorker.KEY_DISCOVERED, 0),
+                        indexed = data.getInt(SmbRepositorySyncWorker.KEY_INDEXED, 0),
+                        total = total,
+                        remaining = total?.let { (it - data.getInt(SmbRepositorySyncWorker.KEY_INDEXED, 0)).coerceAtLeast(0) },
+                        directories = data.getInt(SmbRepositorySyncWorker.KEY_DIRECTORIES, 0),
+                    )
+                    if (work.state == WorkInfo.State.FAILED) {
+                        val category = work.outputData.getString(SmbRepositorySyncWorker.KEY_ERROR)
+                            ?.let { value -> runCatching { RemoteErrorCategory.valueOf(value) }.getOrNull() }
+                            ?: RemoteErrorCategory.UNKNOWN
+                        _errorMessage.value = SmbFormPolicy.actionableMessage(category) + "；旧索引仍保留"
+                    }
+                }
+                smbSyncingRepoIds = activeIds
+                publishRemoteSyncingRepoIds()
+                _remoteSyncStatusMap.value = states
+            }
+        }
         viewModelScope.launch {
             workManager.getWorkInfosByTagFlow(RepositoryScanWorker.WORK_TAG).collect { works ->
                 val activeIds = mutableSetOf<Long>()
@@ -187,23 +249,13 @@ class RepositoryManagerViewModel(application: Application) : AndroidViewModel(ap
                 val connId = repo?.remoteConnectionId
                 if (connId != null) {
                     AppLogger.i(TAG, "删除远程仓库: repoId=$repoId, connId=$connId")
-                    // 清理 Keystore 凭据
-                    try {
-                        container.keyStoreManager.deleteCredential(connId)
-                        AppLogger.d(TAG, "已删除 Keystore 凭据: connId=$connId")
-                    } catch (e: Exception) {
-                        AppLogger.w(TAG, "删除 Keystore 凭据失败: $e")
+                    val result = container.remoteRepositoryLifecycleService.remove(repoId)
+                    if (result.externalCleanupPending) {
+                        AppLogger.w(TAG, "远程仓库外部清理待重试: connId=$connId")
                     }
-                    // 删除远程连接记录
-                    try {
-                        container.remoteConnectionDao.deleteById(connId)
-                        AppLogger.d(TAG, "已删除 RemoteConnection: connId=$connId")
-                    } catch (e: Exception) {
-                        AppLogger.w(TAG, "删除 RemoteConnection 失败: $e")
-                    }
+                } else {
+                    manager.deleteRepository(repoId)
                 }
-
-                manager.deleteRepository(repoId)
                 AppLogger.i(TAG, "仓库已删除: repoId=$repoId, isRemote=${connId != null}")
             } catch (e: Exception) {
                 _errorMessage.value = "删除仓库失败: ${e.message}"
@@ -218,6 +270,155 @@ class RepositoryManagerViewModel(application: Application) : AndroidViewModel(ap
      */
     fun rescanRepository(repoId: Long) {
         startScan(repoId)
+    }
+
+    fun refreshRemoteRepository(repoId: Long) {
+        if (repoId in _remoteSyncingRepoIds.value) return
+        viewModelScope.launch {
+            try {
+                val repo = container.repositoryDao.getRepositoryById(repoId)
+                val connection = repo?.remoteConnectionId?.let {
+                    container.remoteConnectionDao.getConnectionById(it)
+                }
+                if (repo == null || connection == null) {
+                    _errorMessage.value = "远程仓库不存在"
+                    return@launch
+                }
+                if (connection.status == ConnectionStatus.AUTH_REQUIRED) {
+                    _errorMessage.value = "请先重新认证此 SMB 仓库"
+                    return@launch
+                }
+                if (connection.type == RemoteType.SMB) {
+                    SmbRepositorySyncWorker.enqueue(app, repoId)
+                    AppLogger.i(TAG, "SMB 手动刷新已提交: connectionId=${connection.id}, repoId=$repoId")
+                } else {
+                    startHttpSync(connection, repoId)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                _errorMessage.value = "远程刷新失败，请稍后重试；旧索引仍保留"
+                AppLogger.e(TAG, "远程刷新提交失败: repoId=$repoId, category=${error.javaClass.simpleName}")
+            }
+        }
+    }
+
+    fun cancelRemoteSync(repoId: Long) {
+        SmbRepositorySyncWorker.cancel(app, repoId)
+        val httpJob = httpSyncJobs.remove(repoId)
+        httpJob?.cancel()
+        publishRemoteSyncingRepoIds()
+        AppLogger.i(TAG, "远程刷新取消请求: repoId=$repoId, httpActive=${httpJob != null}")
+    }
+
+    private fun startHttpSync(connection: RemoteConnectionEntity, repoId: Long) {
+        lateinit var syncJob: Job
+        syncJob = viewModelScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                container.syncRemoteRepositoryUseCase.syncAlbums(connection, repoId)
+                AppLogger.i(TAG, "HTTP 手动刷新完成: connectionId=${connection.id}, repoId=$repoId")
+            } catch (cancelled: CancellationException) {
+                AppLogger.i(TAG, "HTTP 手动刷新取消: connectionId=${connection.id}, repoId=$repoId")
+                throw cancelled
+            } catch (error: Throwable) {
+                _errorMessage.value = "远程刷新失败，请检查设备是否在线；旧索引仍保留"
+                AppLogger.e(
+                    TAG,
+                    "HTTP 手动刷新失败: connectionId=${connection.id}, category=${error.javaClass.simpleName}",
+                )
+            } finally {
+                httpSyncJobs.remove(repoId, syncJob)
+                publishRemoteSyncingRepoIds()
+            }
+        }
+        if (httpSyncJobs.putIfAbsent(repoId, syncJob) == null) {
+            publishRemoteSyncingRepoIds()
+            syncJob.start()
+        } else {
+            syncJob.cancel()
+            AppLogger.i(TAG, "HTTP 手动刷新请求已忽略: repoId=$repoId, reason=already-running")
+        }
+    }
+
+    private fun publishRemoteSyncingRepoIds() {
+        _remoteSyncingRepoIds.value = smbSyncingRepoIds + httpSyncJobs.keys
+    }
+
+    fun reauthenticate(
+        connectionId: Long,
+        password: String,
+        onSuccess: () -> Unit,
+    ) {
+        if (password.isEmpty() || connectionId in _reauthenticatingConnectionIds.value) return
+        viewModelScope.launch {
+            _reauthenticatingConnectionIds.update { it + connectionId }
+            try {
+                val connection = checkNotNull(container.remoteConnectionDao.getConnectionById(connectionId))
+                container.smbSessionManager.testConnection(connection, password.toCharArray())
+                container.remoteRepositoryLifecycleService.reauthenticate(connectionId, password.toCharArray())
+                AppLogger.i(TAG, "SMB 重新认证完成: connectionId=$connectionId")
+                onSuccess()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                val category = (error as? RemoteDataException)?.category ?: RemoteErrorCategory.UNKNOWN
+                _errorMessage.value = SmbFormPolicy.actionableMessage(category)
+                AppLogger.e(TAG, "SMB 重新认证失败: connectionId=$connectionId, category=$category")
+            } finally {
+                _reauthenticatingConnectionIds.update { it - connectionId }
+            }
+        }
+    }
+
+    fun updateSmbRoot(
+        connectionId: Long,
+        rootPath: String,
+        onSuccess: () -> Unit,
+    ) {
+        viewModelScope.launch {
+            try {
+                val connection = checkNotNull(container.remoteConnectionDao.getConnectionById(connectionId))
+                require(connection.type == RemoteType.SMB)
+                val normalizedRoot = SmbPathCodec.normalizeRelative(rootPath).ifBlank { null }
+                val repositoryId = _repositories.value.firstOrNull {
+                    it.remoteConnectionId == connectionId
+                }?.id ?: error("远程仓库不存在")
+                val identity = RemoteConnectionIdentity.create(
+                    connection.type,
+                    connection.host,
+                    connection.port,
+                    connection.shareName,
+                    normalizedRoot,
+                    connection.domain,
+                    connection.username,
+                )
+                container.smbSessionManager.invalidate(connectionId)
+                container.remoteConnectionDao.update(
+                    connection.copy(
+                        rootPath = normalizedRoot,
+                        identityKey = identity,
+                        status = ConnectionStatus.DISCONNECTED,
+                    )
+                )
+                SmbRepositorySyncWorker.enqueue(app, repositoryId)
+                AppLogger.i(
+                    TAG,
+                    "SMB 相册根目录已更新并提交刷新: connectionId=$connectionId, repoId=$repositoryId, " +
+                        "depth=${normalizedRoot?.count { it == '/' }?.plus(1) ?: 0}",
+                )
+                onSuccess()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                _errorMessage.value = when {
+                    error is android.database.sqlite.SQLiteConstraintException ->
+                        "该扫描目录已作为另一个仓库添加"
+                    error is RemoteDataException -> SmbFormPolicy.actionableMessage(error.category)
+                    else -> "更新相册目录失败，请稍后重试"
+                }
+                AppLogger.e(TAG, "SMB 相册根目录更新失败: connectionId=$connectionId, cause=${error.javaClass.simpleName}")
+            }
+        }
     }
 
     /**

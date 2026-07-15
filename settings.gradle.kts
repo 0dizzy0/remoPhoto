@@ -37,3 +37,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "remoPhoto"
 include(":app")
+include(":spikes:smbj-android")

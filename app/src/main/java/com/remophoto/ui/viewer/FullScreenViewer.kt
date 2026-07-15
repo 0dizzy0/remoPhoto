@@ -44,6 +44,7 @@ import com.remophoto.ui.viewer.components.FullScreenOverlay
 import com.remophoto.ui.viewer.components.ZoomableImage
 import com.remophoto.util.AppLogger
 import com.remophoto.util.Constants
+import com.remophoto.data.remote.isRemoteMediaAddress
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -351,10 +352,7 @@ fun FullScreenViewer(
                 if (image != null) {
                     ZoomableImage(
                         image = image,
-                        imageLoader = if (
-                            image.filePath.startsWith("http://") ||
-                            image.filePath.startsWith("https://")
-                        ) {
+                        imageLoader = if (image.filePath.isRemoteMediaAddress()) {
                             app.dependencyContainer.remoteImageLoader
                         } else {
                             app.dependencyContainer.imageLoader

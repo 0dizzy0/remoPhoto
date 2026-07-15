@@ -33,12 +33,12 @@ class Migration3To4Test {
         insertVersion3Fixture()
 
         val migrated = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DATABASE)
-            .addMigrations(Migrations.MIGRATION_3_4)
+            .addMigrations(Migrations.MIGRATION_3_4, Migrations.MIGRATION_4_5)
             .allowMainThreadQueries()
             .build()
         try {
             val database = migrated.openHelper.writableDatabase
-            assertEquals(4, database.version)
+            assertEquals(5, database.version)
             database.query("SELECT last_modified FROM albums WHERE id = 1").use { cursor ->
                 cursor.moveToFirst()
                 assertEquals(20L, cursor.getLong(0))

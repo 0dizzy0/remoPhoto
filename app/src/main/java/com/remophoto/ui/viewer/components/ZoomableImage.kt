@@ -21,6 +21,8 @@ import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.remophoto.domain.model.ImageItem
+import com.remophoto.data.remote.isRemoteMediaAddress
+import com.remophoto.data.remote.remoteMediaCacheKey
 import com.remophoto.util.AppLogger
 import com.remophoto.util.Constants
 import kotlin.math.abs
@@ -209,6 +211,12 @@ fun ZoomableImage(
                 .data(image.filePath)
                 .crossfade(false)
                 .size(2048)
+                .apply {
+                    if (image.filePath.isRemoteMediaAddress()) {
+                        memoryCacheKey(image.filePath.remoteMediaCacheKey(":original"))
+                        diskCacheKey(image.filePath.remoteMediaCacheKey(":original"))
+                    }
+                }
                 .build(),
             imageLoader = imageLoader,
             contentDescription = image.fileName,

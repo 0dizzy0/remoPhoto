@@ -246,13 +246,13 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
                 hasCachedAlbums = cachedAlbums.isNotEmpty()
                 if (hasCachedAlbums) {
                     applyAlbumEntities(cachedAlbums)
-                    AppLogger.i(TAG, "远程相册缓存已展示: repo=${repo.name}, count=${cachedAlbums.size}")
+                    AppLogger.i(TAG, "远程相册缓存已展示: repoId=${repo.id}, count=${cachedAlbums.size}")
                 }
 
                 val cacheAgeMs = System.currentTimeMillis() - repo.lastScanTime
                 val cacheFresh = repo.lastScanTime > 0L && cacheAgeMs < REMOTE_CACHE_TTL_MS
                 if (hasCachedAlbums && cacheFresh && !forceRefresh) {
-                    AppLogger.i(TAG, "远程相册缓存仍有效，跳过同步: repo=${repo.name}, ageMs=$cacheAgeMs")
+                    AppLogger.i(TAG, "远程相册缓存仍有效，跳过同步: repoId=${repo.id}, ageMs=$cacheAgeMs")
                     return@launch
                 }
 
@@ -261,16 +261,19 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
                 val conn = remoteConnectionDao.getConnectionById(repo.remoteConnectionId)
                     ?: return@launch
                 val syncedCount = syncRemoteUseCase.syncAlbums(conn, repo.id)
-                AppLogger.i(TAG, "远程同步完成: ${syncedCount} 个相册, repo=${repo.name}")
+                AppLogger.i(TAG, "远程同步完成: repoId=${repo.id}, albumCount=$syncedCount")
 
                 if (_selectedRepoId.value == repo.id) {
                     applyAlbumEntities(albumRepository.getAlbumsByRepositoryList(repo.id))
                 }
             } catch (e: CancellationException) {
-                AppLogger.d(TAG, "远程仓库同步任务已取消: ${repo.name}")
+                AppLogger.d(TAG, "远程仓库同步任务已取消: repoId=${repo.id}")
                 throw e
             } catch (e: Exception) {
-                AppLogger.e(TAG, "远程仓库同步失败: ${repo.name}", e)
+                AppLogger.e(
+                    TAG,
+                    "远程仓库同步失败: repoId=${repo.id}, category=${e.javaClass.simpleName}",
+                )
                 if (!hasCachedAlbums) _isEmpty.value = true
             } finally {
                 _isLoading.value = false
@@ -282,7 +285,7 @@ class AlbumListViewModel(application: Application) : AndroidViewModel(applicatio
     fun refreshSelectedRemoteRepository() {
         val repoId = _selectedRepoId.value ?: return
         val repo = _repoList.value.find { it.id == repoId && it.remoteConnectionId != null } ?: return
-        AppLogger.i(TAG, "用户手动刷新远程仓库: repo=${repo.name}")
+        AppLogger.i(TAG, "用户手动刷新远程仓库: repoId=${repo.id}")
         loadRemoteAlbums(repo, forceRefresh = true)
     }
 
