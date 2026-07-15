@@ -13,7 +13,8 @@ param(
     [int]$DevicePort = 1446,
     [int]$RelayPort = 15446,
     [int]$SambaPort = 1445,
-    [switch]$BuildDebug
+    [switch]$BuildDebug,
+    [switch]$ReleaseMode
 )
 
 $ErrorActionPreference = 'Stop'
@@ -80,6 +81,28 @@ function Wsl([string]$Command, [switch]$Root, [switch]$AllowFailure) {
         throw "WSL command failed, exit=$code"
     }
     return @($output)
+}
+
+function Wait-TcpEndpoint([string]$TargetHost, [int]$TargetPort, [int]$TimeoutSeconds = 30) {
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $attempt = 0
+    do {
+        $attempt++
+        $client = [Net.Sockets.TcpClient]::new()
+        try {
+            $connect = $client.ConnectAsync($TargetHost, $TargetPort)
+            if ($connect.Wait(2000) -and $client.Connected) {
+                Log "tcp_ready target=upstream:$TargetPort attempt=$attempt"
+                return
+            }
+        } catch {
+            Log "tcp_wait target=upstream:$TargetPort attempt=$attempt error=$($_.Exception.GetType().Name)"
+        } finally {
+            $client.Dispose()
+        }
+        Start-Sleep -Seconds 1
+    } while ((Get-Date) -lt $deadline)
+    throw "TCP endpoint did not become ready: upstream:$TargetPort"
 }
 
 function Send-Secret([string]$Secret) {
@@ -183,15 +206,31 @@ function Refresh-Repository([int]$ExpectedCount, [string]$Secret, [string]$Expec
     $ui = Dump 'manager-before-refresh' $Secret
     $description = "刷新 $repositoryName"
     $node = @($ui.SelectNodes('//node')) | Where-Object { $_.'content-desc' -eq $description } | Select-Object -First 1
-    if ($null -eq $node) { throw "Refresh action not found: $repositoryName" }
-    $point = Center $node
-    Adb @('shell', 'input', 'tap', "$($point[0])", "$($point[1])") | Out-Null
+    if ($null -eq $node) {
+        $cancelDescription = "取消刷新 $repositoryName"
+        $inProgress = @($ui.SelectNodes('//node')) | Where-Object { $_.'content-desc' -eq $cancelDescription } | Select-Object -First 1
+        if ($null -eq $inProgress) { throw "Refresh action not found: $repositoryName" }
+        Log "reuse_in_progress_refresh expectedCount=$ExpectedCount expectedCategory=$ExpectedCategory"
+    } else {
+        $point = Center $node
+        Adb @('shell', 'input', 'tap', "$($point[0])", "$($point[1])") | Out-Null
+    }
     $deadline = (Get-Date).AddSeconds(75)
     $done = $false
     do {
         Start-Sleep -Seconds 2
         $log = (Adb @('logcat', '-d', '-v', 'brief')) -join "`n"
-        if ($ExpectedCategory) {
+        if ($ReleaseMode) {
+            $releaseUi = Dump 'release-refresh-state' $Secret
+            $releaseTexts = @($releaseUi.SelectNodes('//node')) | ForEach-Object { [string]$_.text }
+            $countReady = $releaseTexts -contains "$ExpectedCount 张图片"
+            $statusReady = if ($ExpectedCategory) {
+                [bool]($releaseTexts | Where-Object { $_ -like '连接异常*' })
+            } else {
+                [bool]($releaseTexts | Where-Object { $_ -like '已连接*' })
+            }
+            if ($countReady -and $statusReady) { $done = $true }
+        } elseif ($ExpectedCategory) {
             if ($log -match "retry=false, category=$([regex]::Escape($ExpectedCategory))") { $done = $true }
         } elseif ($log -match "SMB 后台刷新完成:.*images=$ExpectedCount") { $done = $true }
     } while (-not $done -and (Get-Date) -lt $deadline)
@@ -215,7 +254,18 @@ function Wait-StreamRead {
         Start-Sleep -Seconds 1
         $log = (Adb @('logcat', '-d', '-v', 'brief')) -join "`n"
         if ($log -match 'SMB 读取资源已关闭') { return }
+        if ($ReleaseMode) {
+            $ui = Dump 'release-media-render'
+            $rendered = @($ui.SelectNodes('//node[@class="android.widget.ImageView"]')) | Where-Object {
+                -not [string]::IsNullOrWhiteSpace([string]$_.'content-desc') -and
+                $_.bounds -match '^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$' -and
+                ([int]$Matches[3] - [int]$Matches[1]) -gt 500 -and
+                ([int]$Matches[4] - [int]$Matches[2]) -gt 500
+            } | Select-Object -First 1
+            if ($null -ne $rendered) { return }
+        }
     } while ((Get-Date) -lt $deadline)
+    if ($ReleaseMode) { throw 'SMB media render was not observed in Release UI tree' }
     throw 'SMB media stream completion log was not observed'
 }
 
@@ -314,7 +364,10 @@ try {
     if (-not (Test-Path -LiteralPath $resolvedApk -PathType Leaf)) { throw "APK not found: $resolvedApk" }
 
     $script:Stage = 'server-setup'
-    $script:KeepAliveProcess = Start-Process -FilePath 'wsl.exe' -ArgumentList @('-d', $Distro, '--', 'bash', '-lc', 'exec sleep infinity') -PassThru -WindowStyle Hidden
+    $script:KeepAliveProcess = Start-Process -FilePath 'wsl.exe' -ArgumentList @('-d', $Distro, '--', 'sleep', 'infinity') -PassThru -WindowStyle Hidden
+    Start-Sleep -Seconds 1
+    if ($script:KeepAliveProcess.HasExited) { throw 'WSL keepalive process exited during startup' }
+    Log "wsl_keepalive pid=$($script:KeepAliveProcess.Id)"
     $sourceWsl = '/mnt/' + $FixturePath.Substring(0, 1).ToLowerInvariant() + ($FixturePath.Substring(2).Replace('\', '/'))
     $setup = "set -e; cp /etc/samba/smb.conf '$wslBackup'; mkdir -p '$wslStage'; cp -a '$sourceWsl/.' '$wslStage/'; printf '\n[$shareName]\n    path = $wslStage\n    read only = yes\n    browseable = yes\n    guest ok = no\n    valid users = $($credentials.username)\n    follow symlinks = no\n' >> /etc/samba/smb.conf; testparm -s >/dev/null; systemctl restart smbd"
     $script:ServerPrepared = $true
@@ -323,6 +376,7 @@ try {
     $wslIpMatch = [regex]::Match($wslIpText, '(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])')
     if (-not $wslIpMatch.Success) { throw 'WSL IPv4 discovery failed' }
     $wslIp = $wslIpMatch.Value
+    Wait-TcpEndpoint -TargetHost $wslIp -TargetPort $SambaPort
     $relayScript = Join-Path $PSScriptRoot 'smb-smoke-tcp-relay.py'
     $script:RelayProcess = Start-Process -FilePath $pythonPath -ArgumentList @($relayScript, '--listen-port', "$RelayPort", '--target-host', $wslIp, '--target-port', "$SambaPort", '--log-file', (Join-Path $runDir 'tcp-relay.log')) -PassThru -WindowStyle Hidden
     Start-Sleep -Seconds 2
@@ -381,7 +435,8 @@ try {
     $script:Stage = 'delete-repository'
     Delete-Repository $secret
     if ($script:SecretOccurrences -ne 0) { throw "Password appeared in UI tree: $script:SecretOccurrences occurrences" }
-    @('# SMB Smoke Summary', '', '- Result: PASS', "- API: $api", '- Fixture images: 30', '- Initial sync: 30', '- Remote add: 31', '- Remote remove: 30', '- Offline/recovery: PASS', '- Static/GIF stream logs: PASS', '- UI tree secret occurrences: 0') |
+    $mediaEvidence = if ($ReleaseMode) { 'Release UI render + instrumentation resource lifecycle' } else { 'Debug stream completion logs' }
+    @('# SMB Smoke Summary', '', '- Result: PASS', "- API: $api", '- Fixture images: 30', '- Initial sync: 30', '- Remote add: 31', '- Remote remove: 30', '- Offline/recovery: PASS', "- Static/GIF media evidence: $mediaEvidence", '- UI tree secret occurrences: 0') |
         Out-File -LiteralPath $summaryFile -Encoding UTF8
     Log 'PASS'
     $result = 'PASS'
